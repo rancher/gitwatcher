@@ -1,8 +1,10 @@
 package v1
 
 import (
+	"github.com/rancher/norman/condition"
 	"github.com/rancher/norman/types"
 	"github.com/rancher/norman/types/factory"
+	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -18,13 +20,19 @@ var (
 		MustImport(&APIVersion, GitWebHookExecution{})
 )
 
+const (
+	GitWebHookReceiverConditionRegistered condition.Cond = "Registered"
+	GitWebHookExecutionConditionHandled   condition.Cond = "Handled"
+)
+
 type GitWebHookReceiver struct {
 	types.Namespaced
 
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec GitWebHookReceiverSpec `json:"spec"`
+	Spec   GitWebHookReceiverSpec   `json:"spec"`
+	Status GitWebHookReceiverStatus `json:"status"`
 }
 
 type GitWebHookReceiverSpec struct {
@@ -56,8 +64,35 @@ type GitWebHookExecutionSpec struct {
 	Tag                    string `json:"tag,omitempty"`
 	PR                     string `json:"pr,omitempty"`
 	SourceLink             string `json:"sourceLink,omitempty"`
+	RepositoryURL          string `json:"repositoryUrl,omitempty"`
+	Title                  string `json:"title,omitempty"`
+	Message                string `json:"message,omitempty"`
+	Author                 string `json:"author,omitempty"`
+	AuthorEmail            string `json:"authorEmail,omitempty"`
+	AuthorAvatar           string `json:"authorAvatar,omitempty"`
+}
+
+type GitWebHookReceiverStatus struct {
+	Token      string
+	Conditions []Condition `json:"conditions,omitempty"`
 }
 
 type GitWebHookExecutionStatus struct {
-	StatusURL string `json:"statusUrl,omitempty"`
+	StatusURL     string `json:"statusUrl,omitempty"`
+	AppliedStatus string `json:"appliedStatus,omitempty"`
+}
+
+type Condition struct {
+	// Type of the condition.
+	Type string `json:"type"`
+	// Status of the condition, one of True, False, Unknown.
+	Status v1.ConditionStatus `json:"status"`
+	// The last time this condition was updated.
+	LastUpdateTime string `json:"lastUpdateTime,omitempty"`
+	// Last time the condition transitioned from one status to another.
+	LastTransitionTime string `json:"lastTransitionTime,omitempty"`
+	// The reason for the condition's last transition.
+	Reason string `json:"reason,omitempty"`
+	// Human-readable message indicating details about last transition
+	Message string `json:"message,omitempty"`
 }

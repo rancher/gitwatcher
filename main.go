@@ -5,6 +5,8 @@ package main
 
 import (
 	"context"
+	"github.com/rancher/types/config"
+	"k8s.io/client-go/tools/clientcmd"
 	"net/http"
 	"os"
 
@@ -52,7 +54,16 @@ func run(c *cli.Context) error {
 		return err
 	}
 
-	ctx, srv, err := server.Config().Build(ctx, &norman.Options{
+	cfg, err := clientcmd.BuildConfigFromFlags("", kubeConfig)
+	if err != nil {
+		return err
+	}
+	scaledContext, err := config.NewScaledContext(*cfg)
+	if err != nil {
+		return err
+	}
+
+	ctx, srv, err := server.Config(scaledContext).Build(ctx, &norman.Options{
 		K8sMode:    "external",
 		KubeConfig: kubeConfig,
 	})

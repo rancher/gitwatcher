@@ -2,14 +2,14 @@ package server
 
 import (
 	"context"
-
 	"github.com/rancher/norman"
 	"github.com/rancher/norman/types"
+	"github.com/rancher/types/config"
 	"github.com/rancher/webhookinator/pkg/controllers/webhook"
 	"github.com/rancher/webhookinator/types/apis/webhookinator.cattle.io/v1"
 )
 
-func Config() *norman.Config {
+func Config(scaledContext *config.ScaledContext) *norman.Config {
 	return &norman.Config{
 		Name: "webhookinator",
 		Schemas: []*types.Schemas{
@@ -29,7 +29,7 @@ func Config() *norman.Config {
 
 		MasterControllers: []norman.ControllerRegister{
 			func(ctx context.Context) error {
-				return webhook.Register(ctx, v1.From(ctx))
+				return webhook.Register(ctx, scaledContext)
 			},
 		},
 	}
