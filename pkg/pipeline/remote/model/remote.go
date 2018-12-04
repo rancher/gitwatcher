@@ -10,6 +10,7 @@ type Remote interface {
 
 	CreateHook(receiver *v1.GitWebHookReceiver, accessToken string) error
 	DeleteHook(receiver *v1.GitWebHookReceiver, accessToken string) error
+	UpdateStatus(execution *v1.GitWebHookExecution, status string, accessToken string) error
 }
 
 type Refresher interface {

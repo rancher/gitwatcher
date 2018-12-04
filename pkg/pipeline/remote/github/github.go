@@ -2,7 +2,6 @@ package github
 
 import (
 	"bytes"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"github.com/rancher/webhookinator/pkg/pipeline/remote/model"
@@ -22,7 +21,6 @@ import (
 	"github.com/rancher/types/apis/project.cattle.io/v3"
 	"github.com/sirupsen/logrus"
 	"github.com/tomnomnom/linkheader"
-	"golang.org/x/oauth2"
 )
 
 const (
@@ -78,27 +76,6 @@ func (c *client) Type() string {
 	return model.GithubType
 }
 
-func (c *client) Login(code string) (*v3.SourceCodeCredential, error) {
-	githubOauthConfig := &oauth2.Config{
-		ClientID:     c.ClientID,
-		ClientSecret: c.ClientSecret,
-		Scopes: []string{"repo",
-			"admin:repo_hook"},
-		Endpoint: oauth2.Endpoint{
-			AuthURL:  fmt.Sprintf("%s%s/login/oauth/authorize", c.Scheme, c.Host),
-			TokenURL: fmt.Sprintf("%s%s/login/oauth/access_token", c.Scheme, c.Host),
-		},
-	}
-
-	token, err := githubOauthConfig.Exchange(oauth2.NoContext, code)
-	if err != nil {
-		return nil, err
-	} else if token.TokenType != "bearer" || token.AccessToken == "" {
-		return nil, fmt.Errorf("Fail to get accesstoken with oauth config")
-	}
-	return c.GetAccount(token.AccessToken)
-}
-
 func (c *client) CreateHook(receiver *v1.GitWebHookReceiver, accessToken string) error {
 	user, repo, err := getUserRepoFromURL(receiver.Spec.RepositoryURL)
 	if err != nil {
@@ -150,6 +127,11 @@ func (c *client) DeleteHook(receiver *v1.GitWebHookReceiver, accessToken string)
 	return nil
 }
 
+func (c *client) UpdateStatus(execution *v1.GitWebHookExecution, status string, accessToken string) error {
+	//TODO
+	return nil
+}
+
 func (c *client) getHook(receiver *v1.GitWebHookReceiver, accessToken string) (*github.Hook, error) {
 	user, repo, err := getUserRepoFromURL(receiver.Spec.RepositoryURL)
 	if err != nil {
@@ -180,327 +162,6 @@ func (c *client) getHook(receiver *v1.GitWebHookReceiver, accessToken string) (*
 		}
 	}
 	return result, nil
-}
-
-func (c *client) GetAccount(accessToken string) (*v3.SourceCodeCredential, error) {
-	account, err := c.getGithubUser(accessToken)
-	if err != nil {
-		return nil, err
-	}
-	remoteAccount := convertAccount(account)
-	remoteAccount.Spec.AccessToken = accessToken
-	return remoteAccount, nil
-}
-
-func (c *client) Repos(account *v3.SourceCodeCredential) ([]v3.SourceCodeRepository, error) {
-	if account == nil {
-		return nil, fmt.Errorf("empty account")
-	}
-	accessToken := account.Spec.AccessToken
-	return c.getGithubRepos(accessToken)
-}
-
-func (c *client) getGithubUser(githubAccessToken string) (*github.User, error) {
-
-	url := c.API + "/user"
-	resp, err := getFromGithub(url, githubAccessToken)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	githubAcct := &github.User{}
-
-	b, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := json.Unmarshal(b, githubAcct); err != nil {
-		return nil, err
-	}
-	return githubAcct, nil
-}
-
-func convertAccount(gitaccount *github.User) *v3.SourceCodeCredential {
-
-	if gitaccount == nil {
-		return nil
-	}
-	account := &v3.SourceCodeCredential{}
-	account.Spec.SourceCodeType = model.GithubType
-
-	account.Spec.AvatarURL = gitaccount.GetAvatarURL()
-	account.Spec.HTMLURL = gitaccount.GetHTMLURL()
-	account.Spec.LoginName = gitaccount.GetLogin()
-	account.Spec.GitLoginName = gitaccount.GetLogin()
-	account.Spec.DisplayName = gitaccount.GetName()
-
-	return account
-
-}
-
-func (c *client) getGithubRepos(githubAccessToken string) ([]v3.SourceCodeRepository, error) {
-	url := c.API + "/user/repos"
-	var repos []github.Repository
-	responses, err := paginateGithub(githubAccessToken, url)
-	if err != nil {
-		return nil, err
-	}
-	for _, response := range responses {
-		defer response.Body.Close()
-		b, err := ioutil.ReadAll(response.Body)
-		if err != nil {
-			return nil, err
-		}
-		var reposObj []github.Repository
-		if err := json.Unmarshal(b, &reposObj); err != nil {
-			return nil, err
-		}
-		repos = append(repos, reposObj...)
-	}
-
-	return convertRepos(repos), nil
-}
-
-func (c *client) getFileContent(filename string, owner string, repo string, ref string, githubAccessToken string) (*github.RepositoryContent, error) {
-
-	url := fmt.Sprintf("%s/repos/%s/%s/contents/%s", c.API, owner, repo, filename)
-	if ref != "" {
-		url = url + "?ref=" + ref
-	}
-	resp, err := getFromGithub(url, githubAccessToken)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	fileContent := &github.RepositoryContent{}
-
-	b, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := json.Unmarshal(b, fileContent); err != nil {
-		return nil, err
-	}
-	return fileContent, nil
-}
-
-func (c *client) GetPipelineFileInRepo(repoURL string, ref string, accessToken string) ([]byte, error) {
-	owner, repo, err := getUserRepoFromURL(repoURL)
-	if err != nil {
-		return nil, err
-	}
-	content, err := c.getFileContent(utils.PipelineFileYaml, owner, repo, ref, accessToken)
-	if err != nil {
-		//look for both suffix
-		content, err = c.getFileContent(utils.PipelineFileYml, owner, repo, ref, accessToken)
-	}
-	if err != nil {
-		logrus.Debugf("error GetPipelineFileInRepo - %v", err)
-		return nil, nil
-	}
-	if content.Content != nil {
-		b, err := base64.StdEncoding.DecodeString(*content.Content)
-		if err != nil {
-			return nil, err
-		}
-
-		return b, nil
-	}
-	return nil, nil
-}
-
-func (c *client) SetPipelineFileInRepo(repoURL string, ref string, accessToken string, content []byte) error {
-
-	owner, repo, err := getUserRepoFromURL(repoURL)
-	if err != nil {
-		return err
-	}
-
-	currentContent, err := c.getFileContent(utils.PipelineFileYml, owner, repo, ref, accessToken)
-	currentFileName := utils.PipelineFileYml
-	if err != nil {
-		if httpErr, ok := err.(*httperror.APIError); !ok || httpErr.Code.Status != http.StatusNotFound {
-			return err
-		}
-		//look for both suffix
-		currentContent, err = c.getFileContent(utils.PipelineFileYaml, owner, repo, ref, accessToken)
-		if err != nil {
-			if httpErr, ok := err.(*httperror.APIError); !ok || httpErr.Code.Status != http.StatusNotFound {
-				return err
-			}
-		} else {
-			currentFileName = utils.PipelineFileYaml
-		}
-	}
-
-	url := fmt.Sprintf("%s/repos/%s/%s/contents/%s", c.API, owner, repo, currentFileName)
-	message := "Create .rancher-pipeline.yml file"
-
-	//contentStr := base64.StdEncoding.EncodeToString(content)
-	options := &github.RepositoryContentFileOptions{
-		Message: &message,
-		Branch:  &ref,
-		Content: content,
-	}
-
-	if currentContent != nil {
-		//update pipeline file
-		message = fmt.Sprintf("Update %s file", currentFileName)
-		options.Message = &message
-		options.SHA = currentContent.SHA
-	}
-
-	b, err := json.Marshal(options)
-	if err != nil {
-		return err
-	}
-	reader := bytes.NewReader(b)
-	resp, err := doRequestToGithub(http.MethodPut, url, accessToken, reader)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	return nil
-}
-
-func (c *client) GetDefaultBranch(repoURL string, accessToken string) (string, error) {
-	owner, repo, err := getUserRepoFromURL(repoURL)
-	if err != nil {
-		return "", err
-	}
-
-	url := fmt.Sprintf("%s/repos/%s/%s", c.API, owner, repo)
-
-	resp, err := getFromGithub(url, accessToken)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-	repository := &github.Repository{}
-
-	b, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return "", err
-	}
-
-	if err := json.Unmarshal(b, repository); err != nil {
-		return "", err
-	}
-	if repository.DefaultBranch != nil {
-		return *repository.DefaultBranch, nil
-	}
-	return "", nil
-
-}
-
-func (c *client) GetBranches(repoURL string, accessToken string) ([]string, error) {
-	owner, repo, err := getUserRepoFromURL(repoURL)
-	if err != nil {
-		return nil, err
-	}
-
-	url := fmt.Sprintf("%s/repos/%s/%s/branches", c.API, owner, repo)
-
-	resp, err := getFromGithub(url, accessToken)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	branches := []github.Branch{}
-
-	b, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := json.Unmarshal(b, &branches); err != nil {
-		return nil, err
-	}
-	result := []string{}
-	for _, b := range branches {
-		result = append(result, b.GetName())
-	}
-
-	return result, nil
-}
-
-func (c *client) GetHeadInfo(repoURL string, branch string, accessToken string) (*model.BuildInfo, error) {
-	owner, repo, err := getUserRepoFromURL(repoURL)
-	if err != nil {
-		return nil, err
-	}
-
-	url := fmt.Sprintf("%s/repos/%s/%s/commits/%s", c.API, owner, repo, branch)
-
-	resp, err := getFromGithub(url, accessToken)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	commit := github.RepositoryCommit{}
-
-	b, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := json.Unmarshal(b, &commit); err != nil {
-		return nil, err
-	}
-	info := &model.BuildInfo{}
-	info.Commit = commit.GetSHA()
-	info.Ref = branch
-	info.Branch = branch
-	info.Message = commit.Commit.GetMessage()
-	info.HTMLLink = commit.GetHTMLURL()
-	info.Email = commit.Commit.Author.GetEmail()
-	info.AvatarURL = commit.Author.GetAvatarURL()
-	info.Author = commit.Author.GetLogin()
-
-	return info, nil
-}
-
-func convertRepos(repos []github.Repository) []v3.SourceCodeRepository {
-	result := []v3.SourceCodeRepository{}
-	for _, repo := range repos {
-		r := v3.SourceCodeRepository{}
-
-		r.Spec.URL = repo.GetCloneURL()
-		r.Spec.Language = repo.GetLanguage()
-		r.Spec.DefaultBranch = repo.GetDefaultBranch()
-
-		permissions := repo.GetPermissions()
-		r.Spec.Permissions.Pull = permissions["pull"]
-		r.Spec.Permissions.Push = permissions["push"]
-		r.Spec.Permissions.Admin = permissions["admin"]
-
-		result = append(result, r)
-	}
-	return result
-}
-
-func paginateGithub(githubAccessToken string, url string) ([]*http.Response, error) {
-	var responses []*http.Response
-
-	response, err := getFromGithub(url, githubAccessToken)
-	if err != nil {
-		return responses, err
-	}
-	responses = append(responses, response)
-	nextURL := nextGithubPage(response)
-	for nextURL != "" {
-		response, err = getFromGithub(nextURL, githubAccessToken)
-		if err != nil {
-			return responses, err
-		}
-		responses = append(responses, response)
-		nextURL = nextGithubPage(response)
-	}
-
-	return responses, nil
 }
 
 func getFromGithub(url string, accessToken string) (*http.Response, error) {

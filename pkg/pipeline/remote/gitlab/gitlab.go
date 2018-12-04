@@ -2,11 +2,8 @@ package gitlab
 
 import (
 	"bytes"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"github.com/rancher/webhookinator/pkg/pipeline/remote/model"
-	"github.com/rancher/webhookinator/types/apis/webhookinator.cattle.io/v1"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -18,14 +15,13 @@ import (
 	"github.com/google/go-querystring/query"
 	"github.com/pkg/errors"
 	"github.com/rancher/norman/httperror"
-	"github.com/rancher/rancher/pkg/pipeline/utils"
 	"github.com/rancher/rancher/pkg/ref"
 	"github.com/rancher/rancher/pkg/settings"
 	"github.com/rancher/types/apis/project.cattle.io/v3"
-	"github.com/sirupsen/logrus"
+	"github.com/rancher/webhookinator/pkg/pipeline/remote/model"
+	"github.com/rancher/webhookinator/types/apis/webhookinator.cattle.io/v1"
 	"github.com/tomnomnom/linkheader"
 	"github.com/xanzy/go-gitlab"
-	"golang.org/x/oauth2"
 )
 
 const (
@@ -77,35 +73,6 @@ func (c *client) Type() string {
 	return model.GitlabType
 }
 
-func (c *client) Login(code string) (*v3.SourceCodeCredential, error) {
-	gitlabOauthConfig := &oauth2.Config{
-		RedirectURL:  c.RedirectURL,
-		ClientID:     c.ClientID,
-		ClientSecret: c.ClientSecret,
-		Scopes:       []string{"api"},
-		Endpoint: oauth2.Endpoint{
-			AuthURL:  fmt.Sprintf("%s%s/oauth/authorize", c.Scheme, c.Host),
-			TokenURL: fmt.Sprintf("%s%s/oauth/token", c.Scheme, c.Host),
-		},
-	}
-
-	token, err := gitlabOauthConfig.Exchange(oauth2.NoContext, code)
-	if err != nil {
-		return nil, err
-	} else if token.TokenType != "bearer" || token.AccessToken == "" {
-		return nil, fmt.Errorf("Fail to get accesstoken with oauth config")
-	}
-	return c.GetAccount(token.AccessToken)
-}
-
-func (c *client) Repos(account *v3.SourceCodeCredential) ([]v3.SourceCodeRepository, error) {
-	if account == nil {
-		return nil, fmt.Errorf("empty account")
-	}
-	accessToken := account.Spec.AccessToken
-	return c.getGitlabRepos(accessToken)
-}
-
 func (c *client) CreateHook(receiver *v1.GitWebHookReceiver, accessToken string) error {
 	user, repo, err := getUserRepoFromURL(receiver.Spec.RepositoryURL)
 	if err != nil {
@@ -148,6 +115,11 @@ func (c *client) DeleteHook(receiver *v1.GitWebHookReceiver, accessToken string)
 	return nil
 }
 
+func (c *client) UpdateStatus(execution *v1.GitWebHookExecution, status string, accessToken string) error {
+	//TODO
+	return nil
+}
+
 func (c *client) getHook(receiver *v1.GitWebHookReceiver, accessToken string) (*gitlab.ProjectHook, error) {
 	user, repo, err := getUserRepoFromURL(receiver.Spec.RepositoryURL)
 	if err != nil {
@@ -177,244 +149,6 @@ func (c *client) getHook(receiver *v1.GitWebHookReceiver, accessToken string) (*
 		}
 	}
 	return result, nil
-}
-
-func (c *client) getFileFromRepo(filename string, owner string, repo string, ref string, accessToken string) (*gitlab.File, error) {
-	project := url.QueryEscape(owner + "/" + repo)
-	url := fmt.Sprintf("%s/projects/%s/repository/files/%s?ref=%s", c.API, project, filename, ref)
-	resp, err := getFromGitlab(accessToken, url)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	file := &gitlab.File{}
-
-	b, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := json.Unmarshal(b, file); err != nil {
-		return nil, err
-	}
-	return file, nil
-}
-
-func (c *client) GetPipelineFileInRepo(repoURL string, ref string, accessToken string) ([]byte, error) {
-	owner, repo, err := getUserRepoFromURL(repoURL)
-	if err != nil {
-		return nil, err
-	}
-	if ref == "" {
-		defaultBranch, err := c.GetDefaultBranch(repoURL, accessToken)
-		if err != nil {
-			return nil, err
-		}
-		ref = defaultBranch
-	}
-	file, err := c.getFileFromRepo(utils.PipelineFileYml, owner, repo, ref, accessToken)
-	if err != nil {
-		//look for both suffix
-		file, err = c.getFileFromRepo(utils.PipelineFileYaml, owner, repo, ref, accessToken)
-	}
-	if err != nil {
-		logrus.Debugf("error GetPipelineFileInRepo - %v", err)
-		return nil, nil
-	}
-	if file.Content != "" {
-		b, err := base64.StdEncoding.DecodeString(file.Content)
-		if err != nil {
-			return nil, err
-		}
-
-		return b, nil
-	}
-	return nil, nil
-}
-
-func (c *client) SetPipelineFileInRepo(repoURL string, branch string, accessToken string, content []byte) error {
-	owner, repo, err := getUserRepoFromURL(repoURL)
-	if err != nil {
-		return err
-	}
-
-	currentFile, err := c.getFileFromRepo(utils.PipelineFileYml, owner, repo, branch, accessToken)
-	currentFileName := utils.PipelineFileYml
-	if err != nil {
-		if httpErr, ok := err.(*httperror.APIError); !ok || httpErr.Code.Status != http.StatusNotFound {
-			return err
-		}
-		//look for both suffix
-		currentFile, err = c.getFileFromRepo(utils.PipelineFileYaml, owner, repo, branch, accessToken)
-		if err != nil {
-			if httpErr, ok := err.(*httperror.APIError); !ok || httpErr.Code.Status != http.StatusNotFound {
-				return err
-			}
-		} else {
-			currentFileName = utils.PipelineFileYaml
-		}
-	}
-
-	project := url.QueryEscape(owner + "/" + repo)
-	url := fmt.Sprintf("%s/projects/%s/repository/files/%s?branch=%s", c.API, project, currentFileName, branch)
-	message := "Create .rancher-pipeline.yml file"
-	contentStr := string(content)
-	method := http.MethodPost
-	option := &gitlab.CreateFileOptions{
-		Branch:        &branch,
-		CommitMessage: &message,
-		Content:       &contentStr,
-	}
-
-	if currentFile != nil {
-		//update pipeline file
-		method = http.MethodPut
-		message = fmt.Sprintf("Update %s file", currentFileName)
-		option.CommitMessage = &message
-	}
-
-	resp, err := doRequestToGitlab(method, url, accessToken, option)
-	defer resp.Body.Close()
-
-	return nil
-}
-
-func (c *client) GetBranches(repoURL string, accessToken string) ([]string, error) {
-	owner, repo, err := getUserRepoFromURL(repoURL)
-	if err != nil {
-		return nil, err
-	}
-
-	project := url.QueryEscape(owner + "/" + repo)
-	url := fmt.Sprintf(c.API+"/projects/%s/repository/branches", project)
-
-	resp, err := getFromGitlab(accessToken, url)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	branches := []gitlab.Branch{}
-
-	b, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := json.Unmarshal(b, &branches); err != nil {
-		return nil, err
-	}
-	result := []string{}
-	for _, branch := range branches {
-		result = append(result, branch.Name)
-	}
-
-	return result, nil
-}
-
-func (c *client) GetDefaultBranch(repoURL string, accessToken string) (string, error) {
-	owner, repo, err := getUserRepoFromURL(repoURL)
-	if err != nil {
-		return "", err
-	}
-
-	project := url.QueryEscape(owner + "/" + repo)
-	url := fmt.Sprintf(c.API+"/projects/%s", project)
-
-	resp, err := getFromGitlab(accessToken, url)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-	p := &gitlab.Project{}
-
-	b, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return "", err
-	}
-
-	if err := json.Unmarshal(b, p); err != nil {
-		return "", err
-	}
-	if p.DefaultBranch != "" {
-		return p.DefaultBranch, nil
-	}
-	return "", nil
-}
-
-func (c *client) GetHeadInfo(repoURL string, branch string, accessToken string) (*model.BuildInfo, error) {
-
-	owner, repo, err := getUserRepoFromURL(repoURL)
-	if err != nil {
-		return nil, err
-	}
-	project := url.QueryEscape(owner + "/" + repo)
-	url := fmt.Sprintf(c.API+"/projects/%s/repository/commits?with_stats=true&ref_name=%s", project, branch)
-
-	resp, err := getFromGitlab(accessToken, url)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	commits := []gitlab.Commit{}
-
-	b, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := json.Unmarshal(b, &commits); err != nil {
-		return nil, err
-	}
-	if len(commits) == 0 {
-		return nil, errors.New("no commit found")
-	}
-	headCommit := commits[0]
-	info := &model.BuildInfo{}
-	info.Commit = headCommit.ID
-	info.Ref = "refs/heads/" + branch
-	info.Branch = branch
-	info.Message = headCommit.Message
-	info.Email = headCommit.AuthorEmail
-	info.Author = headCommit.AuthorName
-	info.HTMLLink = fmt.Sprintf("%s%s/%s/%s/commit/%s", c.Scheme, c.Host, owner, repo, headCommit.ID)
-	userInfo, err := c.getGitlabUser(accessToken)
-	if err != nil {
-		return nil, err
-	}
-	info.AvatarURL = userInfo.AvatarURL
-
-	return info, nil
-}
-
-func (c *client) GetAccount(accessToken string) (*v3.SourceCodeCredential, error) {
-	account, err := c.getGitlabUser(accessToken)
-	if err != nil {
-		return nil, err
-	}
-	remoteAccount := convertAccount(account)
-	remoteAccount.Spec.AccessToken = accessToken
-	return remoteAccount, nil
-}
-
-func (c *client) getGitlabUser(gitlabAccessToken string) (*gitlab.User, error) {
-
-	url := c.API + "/user"
-	resp, err := getFromGitlab(gitlabAccessToken, url)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	gitlabAcct := &gitlab.User{}
-
-	b, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := json.Unmarshal(b, gitlabAcct); err != nil {
-		return nil, err
-	}
-	return gitlabAcct, nil
 }
 
 func getFromGitlab(gitlabAccessToken string, url string) (*http.Response, error) {

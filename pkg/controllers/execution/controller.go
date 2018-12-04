@@ -13,58 +13,52 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 )
 
-var expectedStatus = map[string]string{
-	"True":    "",
-	"False":   "",
-	"Unknown": "pending",
+const (
+	statusPending = "pending"
+	statusSuccess = ""
+	statusFailed  = ""
+)
+
+var handledToStatus = map[string]string{
+	"True":    statusSuccess,
+	"False":   statusFailed,
+	"Unknown": statusPending,
 }
 
 func Register(ctx context.Context, scaledContext *config.ScaledContext) error {
 	client := v1.From(ctx)
-	fl := &executionLifecycle{
-		webhookExecutionLister:     client.GitWebHookExecutions("").Controller().Lister(),
-		webhookReceiverClient:      client.GitWebHookReceivers(""),
+	fl := &webhookExecutionLifecycle{
+		webhookExecutions:          client.GitWebHookExecutions(""),
 		webhookReceiverLister:      client.GitWebHookReceivers("").Controller().Lister(),
 		sourceCodeCredentials:      scaledContext.Project.SourceCodeCredentials(""),
 		sourceCodeCredentialLister: scaledContext.Project.SourceCodeCredentials("").Controller().Lister(),
 	}
 
-	client.GitWebHookExecutions("").AddHandler(ctx, "execution-syncer", fl.Sync)
-	client.GitWebHookExecutions("").AddLifecycle(ctx, "execution-lifecycle", fl)
+	client.GitWebHookExecutions("").AddHandler(ctx, "webhookexecution-syncer", fl.Sync)
 	return nil
 }
 
-type executionLifecycle struct {
-	webhookExecutionLister     v1.GitWebHookExecutionLister
-	webhookReceiverClient      v1.GitWebHookReceiverInterface
+type webhookExecutionLifecycle struct {
+	webhookExecutions          v1.GitWebHookExecutionInterface
 	webhookReceiverLister      v1.GitWebHookReceiverLister
-	sourceCodeCredentialLister v3.SourceCodeCredentialLister
 	sourceCodeCredentials      v3.SourceCodeCredentialInterface
+	sourceCodeCredentialLister v3.SourceCodeCredentialLister
 }
 
-func (f *executionLifecycle) Sync(key string, obj *v1.GitWebHookExecution) (runtime.Object, error) {
+func (f *webhookExecutionLifecycle) Sync(key string, obj *v1.GitWebHookExecution) (runtime.Object, error) {
 	if obj == nil || obj.DeletionTimestamp != nil {
 		return obj, nil
 	}
-	return obj, nil
+	return obj, f.updateStatus(obj)
 }
 
-func (f *executionLifecycle) Create(obj *v1.GitWebHookExecution) (runtime.Object, error) {
-	return obj, nil
-}
-
-func (f *executionLifecycle) Remove(obj *v1.GitWebHookExecution) (runtime.Object, error) {
-	return obj, nil
-}
-
-func (f *executionLifecycle) Updated(obj *v1.GitWebHookExecution) (runtime.Object, error) {
-	return obj, nil
-}
-
-func (f *executionLifecycle) updateStatus(obj *v1.GitWebHookExecution) error {
-	//handled := v1.GitWebHookExecutionConditionHandled.GetStatus(obj)
-	//appliedStatus := obj.Status.AppliedStatus
-
+func (f *webhookExecutionLifecycle) updateStatus(obj *v1.GitWebHookExecution) error {
+	appliedStatus := obj.Status.AppliedStatus
+	handled := v1.GitWebHookExecutionConditionHandled.GetStatus(obj)
+	toApplyStatus := handledToStatus[handled]
+	if toApplyStatus == appliedStatus {
+		return nil
+	}
 	receiverID := obj.Spec.GitWebHookReceiverName
 	ns, name := ref.Parse(receiverID)
 	receiver, err := f.webhookReceiverLister.Get(ns, name)
@@ -90,5 +84,11 @@ func (f *executionLifecycle) updateStatus(obj *v1.GitWebHookExecution) error {
 	if err != nil {
 		return err
 	}
-	return remote.CreateHook(obj, accessToken)
+	if err := remote.UpdateStatus(obj, toApplyStatus, accessToken); err != nil {
+		return err
+	}
+	toUpdate := obj.DeepCopy()
+	toUpdate.Status.AppliedStatus = toApplyStatus
+	_, err = f.webhookExecutions.Update(toUpdate)
+	return err
 }
