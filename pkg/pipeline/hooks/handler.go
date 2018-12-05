@@ -3,7 +3,7 @@ package hooks
 import (
 	"net/http"
 
-	"github.com/rancher/types/config"
+	"github.com/rancher/webhookinator/types/apis/webhookinator.cattle.io/v1"
 	"github.com/sirupsen/logrus"
 	"k8s.io/apimachinery/pkg/util/json"
 )
@@ -11,13 +11,13 @@ import (
 type WebhookHandler struct {
 }
 
-func New(management *config.ScaledContext) *WebhookHandler {
+func New(management v1.Interface) *WebhookHandler {
 	webhookHandler := &WebhookHandler{}
 	webhookHandler.initDrivers(management)
 	return webhookHandler
 }
 
-func (h *WebhookHandler) initDrivers(management *config.ScaledContext) {
+func (h *WebhookHandler) initDrivers(management v1.Interface) {
 	RegisterDrivers(management)
 }
 

@@ -11,11 +11,11 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/rancher/rancher/pkg/pipeline/remote/bitbucketserver"
-	"github.com/rancher/rancher/pkg/pipeline/remote/model"
-	"github.com/rancher/rancher/pkg/pipeline/utils"
 	"github.com/rancher/rancher/pkg/ref"
-	"github.com/rancher/types/apis/project.cattle.io/v3"
+	"github.com/rancher/webhookinator/pkg/pipeline/remote/bitbucketserver"
+	"github.com/rancher/webhookinator/pkg/pipeline/remote/model"
+	"github.com/rancher/webhookinator/pkg/pipeline/utils"
+	"github.com/rancher/webhookinator/types/apis/webhookinator.cattle.io/v1"
 )
 
 const (
@@ -28,10 +28,8 @@ const (
 )
 
 type BitbucketServerDriver struct {
-	PipelineLister             v3.PipelineLister
-	PipelineExecutions         v3.PipelineExecutionInterface
-	SourceCodeCredentials      v3.SourceCodeCredentialInterface
-	SourceCodeCredentialLister v3.SourceCodeCredentialLister
+	GitWebHookReceiverLister v1.GitWebHookReceiverLister
+	GitWebHookExecutions     v1.GitWebHookExecutionInterface
 }
 
 func (b BitbucketServerDriver) Execute(req *http.Request) (int, error) {
@@ -44,9 +42,9 @@ func (b BitbucketServerDriver) Execute(req *http.Request) (int, error) {
 		return http.StatusUnprocessableEntity, fmt.Errorf("not trigger for event:%s", event)
 	}
 
-	pipelineID := req.URL.Query().Get("pipelineId")
-	ns, name := ref.Parse(pipelineID)
-	pipeline, err := b.PipelineLister.Get(ns, name)
+	receiverID := req.URL.Query().Get(utils.GitWebHookParam)
+	ns, name := ref.Parse(receiverID)
+	receiver, err := b.GitWebHookReceiverLister.Get(ns, name)
 	if err != nil {
 		return http.StatusInternalServerError, err
 	}
@@ -54,7 +52,7 @@ func (b BitbucketServerDriver) Execute(req *http.Request) (int, error) {
 	if err != nil {
 		return http.StatusUnprocessableEntity, err
 	}
-	if match := verifyBitbucketServerWebhookSignature([]byte(pipeline.Status.Token), signature, body); !match {
+	if match := verifyBitbucketServerWebhookSignature([]byte(receiver.Status.Token), signature, body); !match {
 		return http.StatusUnprocessableEntity, errors.New("invalid signature")
 	}
 
@@ -71,7 +69,7 @@ func (b BitbucketServerDriver) Execute(req *http.Request) (int, error) {
 		}
 	}
 
-	return validateAndGeneratePipelineExecution(b.PipelineExecutions, b.SourceCodeCredentials, b.SourceCodeCredentialLister, info, pipeline)
+	return validateAndGenerateExecution(b.GitWebHookExecutions, info, receiver)
 }
 
 func parseBitbucketServerPushPayload(raw []byte) (*model.BuildInfo, error) {

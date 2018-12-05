@@ -89,6 +89,14 @@ type PaginatedHooks struct {
 	Values []Hook `json:"values"`
 }
 
+type Status struct {
+	State       string `json:"state"`
+	Key         string `json:"key"`
+	Name        string `json:"name"`
+	URL         string `json:"url"`
+	Description string `json:"description"`
+}
+
 type Branch struct {
 	ID              string `json:"id"`
 	DisplayID       string `json:"displayId"`

@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/rancher/webhookinator/pkg/pipeline/remote/model"
-	"github.com/rancher/webhookinator/types/apis/webhookinator.cattle.io/v1"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -15,10 +13,12 @@ import (
 
 	"github.com/google/go-github/github"
 	"github.com/rancher/norman/httperror"
-	"github.com/rancher/rancher/pkg/pipeline/utils"
 	"github.com/rancher/rancher/pkg/ref"
 	"github.com/rancher/rancher/pkg/settings"
 	"github.com/rancher/types/apis/project.cattle.io/v3"
+	"github.com/rancher/webhookinator/pkg/pipeline/remote/model"
+	"github.com/rancher/webhookinator/pkg/pipeline/utils"
+	"github.com/rancher/webhookinator/types/apis/webhookinator.cattle.io/v1"
 	"github.com/sirupsen/logrus"
 	"github.com/tomnomnom/linkheader"
 )
@@ -32,6 +32,13 @@ const (
 	hookConfigContentType = "content_type"
 	hookConfigSecret      = "secret"
 	hookConfigInsecureSSL = "insecure_ssl"
+
+	statusPending = "pending"
+	statusSuccess = "success"
+	statusFailure = "failure"
+	descPending   = "This build is pending"
+	descSuccess   = "This build is success"
+	descFailure   = "This build is failure"
 )
 
 type client struct {
@@ -82,7 +89,7 @@ func (c *client) CreateHook(receiver *v1.GitWebHookReceiver, accessToken string)
 		return err
 	}
 
-	hookURL := fmt.Sprintf("%s/hooks?pipelineId=%s", settings.ServerURL.Get(), ref.Ref(receiver))
+	hookURL := fmt.Sprintf("%s/%s%s", settings.ServerURL.Get(), utils.HooksEndpointPrefix, ref.Ref(receiver))
 	events := []string{utils.WebhookEventPush, utils.WebhookEventPullRequest}
 	name := "web"
 	active := true
@@ -127,9 +134,39 @@ func (c *client) DeleteHook(receiver *v1.GitWebHookReceiver, accessToken string)
 	return nil
 }
 
-func (c *client) UpdateStatus(execution *v1.GitWebHookExecution, status string, accessToken string) error {
-	//TODO
-	return nil
+func (c *client) UpdateStatus(execution *v1.GitWebHookExecution, accessToken string) error {
+	user, repo, err := getUserRepoFromURL(execution.Spec.RepositoryURL)
+	if err != nil {
+		return err
+	}
+	targetURL := execution.Status.StatusURL
+	status, desc := convertStatusDesc(execution)
+	context := utils.StatusContext
+	commit := execution.Spec.Commit
+	githubStatus := &github.RepoStatus{
+		State:       &status,
+		TargetURL:   &targetURL,
+		Description: &desc,
+		Context:     &context,
+	}
+	url := fmt.Sprintf("%s/repos/%s/%s/statuses/%s", c.API, user, repo, commit)
+	b := new(bytes.Buffer)
+	json.NewEncoder(b).Encode(githubStatus)
+
+	_, err = doRequestToGithub(http.MethodPost, url, accessToken, b)
+	return err
+}
+
+func convertStatusDesc(execution *v1.GitWebHookExecution) (string, string) {
+	handleCondition := v1.GitWebHookExecutionConditionHandled.GetStatus(execution)
+	switch handleCondition {
+	case "True":
+		return statusSuccess, descSuccess
+	case "False":
+		return statusFailure, descFailure
+	default:
+		return statusPending, descPending
+	}
 }
 
 func (c *client) getHook(receiver *v1.GitWebHookReceiver, accessToken string) (*github.Hook, error) {
@@ -157,7 +194,7 @@ func (c *client) getHook(receiver *v1.GitWebHookReceiver, accessToken string) (*
 	}
 	for _, hook := range hooks {
 		payloadURL, ok := hook.Config["url"].(string)
-		if ok && strings.HasSuffix(payloadURL, fmt.Sprintf("hooks?pipelineId=%s", ref.Ref(receiver))) {
+		if ok && strings.HasSuffix(payloadURL, fmt.Sprintf("%s%s", utils.HooksEndpointPrefix, ref.Ref(receiver))) {
 			result = &hook
 		}
 	}

@@ -5,7 +5,9 @@ package main
 
 import (
 	"context"
+	"github.com/rancher/rancher/pkg/api/controllers/settings"
 	"github.com/rancher/types/config"
+	"github.com/rancher/webhookinator/types/apis/webhookinator.cattle.io/v1"
 	"k8s.io/client-go/tools/clientcmd"
 	"net/http"
 	"os"
@@ -62,7 +64,9 @@ func run(c *cli.Context) error {
 	if err != nil {
 		return err
 	}
-
+	if err := settings.Register(scaledContext); err != nil {
+		return nil
+	}
 	ctx, srv, err := server.Config(scaledContext).Build(ctx, &norman.Options{
 		K8sMode:    "external",
 		KubeConfig: kubeConfig,
@@ -73,9 +77,10 @@ func run(c *cli.Context) error {
 
 	addr := c.String("listen-address")
 	logrus.Infof("Listening on %s", addr)
+	handler := server.HandleHooks(srv.APIHandler, v1.From(ctx))
 
 	go func() {
-		if err := http.ListenAndServe(addr, srv.APIHandler); err != nil {
+		if err := http.ListenAndServe(addr, handler); err != nil {
 			logrus.Fatalf("Failed to listen on %s: %v", addr, err)
 			return
 		}

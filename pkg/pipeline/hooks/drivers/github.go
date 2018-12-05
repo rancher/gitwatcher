@@ -12,10 +12,10 @@ import (
 
 	"github.com/google/go-github/github"
 	"github.com/pkg/errors"
-	"github.com/rancher/rancher/pkg/pipeline/remote/model"
-	"github.com/rancher/rancher/pkg/pipeline/utils"
 	"github.com/rancher/rancher/pkg/ref"
-	"github.com/rancher/types/apis/project.cattle.io/v3"
+	"github.com/rancher/webhookinator/pkg/pipeline/remote/model"
+	"github.com/rancher/webhookinator/pkg/pipeline/utils"
+	"github.com/rancher/webhookinator/types/apis/webhookinator.cattle.io/v1"
 )
 
 const (
@@ -32,10 +32,8 @@ const (
 )
 
 type GithubDriver struct {
-	PipelineLister             v3.PipelineLister
-	PipelineExecutions         v3.PipelineExecutionInterface
-	SourceCodeCredentials      v3.SourceCodeCredentialInterface
-	SourceCodeCredentialLister v3.SourceCodeCredentialLister
+	GitWebHookReceiverLister v1.GitWebHookReceiverLister
+	GitWebHookExecutions     v1.GitWebHookExecutionInterface
 }
 
 func (g GithubDriver) Execute(req *http.Request) (int, error) {
@@ -50,9 +48,9 @@ func (g GithubDriver) Execute(req *http.Request) (int, error) {
 		return http.StatusUnprocessableEntity, fmt.Errorf("not trigger for event:%s", event)
 	}
 
-	pipelineID := req.URL.Query().Get("pipelineId")
-	ns, name := ref.Parse(pipelineID)
-	pipeline, err := g.PipelineLister.Get(ns, name)
+	receiverID := req.URL.Query().Get(utils.GitWebHookParam)
+	ns, name := ref.Parse(receiverID)
+	receiver, err := g.GitWebHookReceiverLister.Get(ns, name)
 	if err != nil {
 		return http.StatusInternalServerError, err
 	}
@@ -60,12 +58,8 @@ func (g GithubDriver) Execute(req *http.Request) (int, error) {
 	if err != nil {
 		return http.StatusUnprocessableEntity, err
 	}
-	if match := verifyGithubWebhookSignature([]byte(pipeline.Status.Token), signature, body); !match {
+	if match := verifyGithubWebhookSignature([]byte(receiver.Status.Token), signature, body); !match {
 		return http.StatusUnprocessableEntity, errors.New("github webhook invalid signature")
-	}
-
-	if pipeline.Status.PipelineState == "inactive" {
-		return http.StatusUnavailableForLegalReasons, errors.New("Pipeline is not active")
 	}
 
 	info := &model.BuildInfo{}
@@ -80,8 +74,7 @@ func (g GithubDriver) Execute(req *http.Request) (int, error) {
 			return http.StatusUnprocessableEntity, err
 		}
 	}
-
-	return validateAndGeneratePipelineExecution(g.PipelineExecutions, g.SourceCodeCredentials, g.SourceCodeCredentialLister, info, pipeline)
+	return validateAndGenerateExecution(g.GitWebHookExecutions, info, receiver)
 }
 
 func verifyGithubWebhookSignature(secret []byte, signature string, body []byte) bool {

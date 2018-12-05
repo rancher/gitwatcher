@@ -19,20 +19,20 @@ import (
 	"github.com/rancher/rancher/pkg/settings"
 	"github.com/rancher/types/apis/project.cattle.io/v3"
 	"github.com/rancher/webhookinator/pkg/pipeline/remote/model"
+	"github.com/rancher/webhookinator/pkg/pipeline/utils"
 	"github.com/rancher/webhookinator/types/apis/webhookinator.cattle.io/v1"
-	"github.com/tomnomnom/linkheader"
 	"github.com/xanzy/go-gitlab"
 )
 
 const (
-	defaultGitlabAPI     = "https://gitlab.com/api/v4"
-	defaultGitlabHost    = "gitlab.com"
-	maxPerPage           = "100"
-	gitlabAPI            = "%s%s/api/v4"
-	gitlabLoginName      = "oauth2"
-	accessLevelReporter  = 20
-	accessLevelDeveloper = 30
-	accessLevelMaster    = 40
+	defaultGitlabAPI  = "https://gitlab.com/api/v4"
+	defaultGitlabHost = "gitlab.com"
+	maxPerPage        = "100"
+	gitlabAPI         = "%s%s/api/v4"
+	descRunning       = "This build is running"
+	descPending       = "This build is pending"
+	descSuccess       = "This build is success"
+	descFailure       = "This build is failure"
 )
 
 type client struct {
@@ -79,7 +79,7 @@ func (c *client) CreateHook(receiver *v1.GitWebHookReceiver, accessToken string)
 		return err
 	}
 	project := url.QueryEscape(user + "/" + repo)
-	hookURL := fmt.Sprintf("%s/hooks?pipelineId=%s", settings.ServerURL.Get(), ref.Ref(receiver))
+	hookURL := fmt.Sprintf("%s/%s%s", settings.ServerURL.Get(), utils.HooksEndpointPrefix, ref.Ref(receiver))
 	opt := &gitlab.AddProjectHookOptions{
 		PushEvents:            gitlab.Bool(true),
 		MergeRequestsEvents:   gitlab.Bool(true),
@@ -115,9 +115,37 @@ func (c *client) DeleteHook(receiver *v1.GitWebHookReceiver, accessToken string)
 	return nil
 }
 
-func (c *client) UpdateStatus(execution *v1.GitWebHookExecution, status string, accessToken string) error {
-	//TODO
-	return nil
+func (c *client) UpdateStatus(execution *v1.GitWebHookExecution, accessToken string) error {
+	user, repo, err := getUserRepoFromURL(execution.Spec.RepositoryURL)
+	if err != nil {
+		return err
+	}
+	project := url.QueryEscape(user + "/" + repo)
+	status, desc := convertStatusDesc(execution)
+	commit := execution.Spec.Commit
+	opt := &gitlab.SetCommitStatusOptions{
+		State:       status,
+		Context:     gitlab.String(utils.StatusContext),
+		TargetURL:   gitlab.String(execution.Status.StatusURL),
+		Description: gitlab.String(desc),
+	}
+	url := fmt.Sprintf("%s/projects/%s/statuses/%s", c.API, project, commit)
+	_, err = doRequestToGitlab(http.MethodPost, url, accessToken, opt)
+	return err
+}
+
+func convertStatusDesc(execution *v1.GitWebHookExecution) (gitlab.BuildStateValue, string) {
+	handleCondition := v1.GitWebHookExecutionConditionHandled.GetStatus(execution)
+	switch handleCondition {
+	case "Unknown":
+		return gitlab.Running, descRunning
+	case "True":
+		return gitlab.Success, descSuccess
+	case "False":
+		return gitlab.Failed, descFailure
+	default:
+		return gitlab.Pending, descPending
+	}
 }
 
 func (c *client) getHook(receiver *v1.GitWebHookReceiver, accessToken string) (*gitlab.ProjectHook, error) {
@@ -144,7 +172,7 @@ func (c *client) getHook(receiver *v1.GitWebHookReceiver, accessToken string) (*
 		return nil, err
 	}
 	for _, hook := range hooks {
-		if strings.HasSuffix(hook.URL, fmt.Sprintf("hooks?pipelineId=%s", ref.Ref(receiver))) {
+		if strings.HasSuffix(hook.URL, fmt.Sprintf("%s%s", utils.HooksEndpointPrefix, ref.Ref(receiver))) {
 			result = &hook
 		}
 	}
@@ -197,124 +225,6 @@ func doRequestToGitlab(method string, url string, gitlabAccessToken string, opt 
 	}
 
 	return resp, nil
-}
-
-func paginateGitlab(gitlabAccessToken string, url string) ([]*http.Response, error) {
-	var responses []*http.Response
-
-	response, err := getFromGitlab(gitlabAccessToken, url)
-	if err != nil {
-		return responses, err
-	}
-	responses = append(responses, response)
-	nextURL := nextGitlabPage(response)
-	for nextURL != "" {
-		response, err = getFromGitlab(gitlabAccessToken, nextURL)
-		if err != nil {
-			return responses, err
-		}
-		responses = append(responses, response)
-		nextURL = nextGitlabPage(response)
-	}
-
-	return responses, nil
-}
-
-func nextGitlabPage(response *http.Response) string {
-	header := response.Header.Get("link")
-
-	if header != "" {
-		links := linkheader.Parse(header)
-		for _, link := range links {
-			if link.Rel == "next" {
-				return link.URL
-			}
-		}
-	}
-
-	return ""
-}
-
-func convertAccount(gitlabAccount *gitlab.User) *v3.SourceCodeCredential {
-
-	if gitlabAccount == nil {
-		return nil
-	}
-	account := &v3.SourceCodeCredential{}
-	account.Spec.SourceCodeType = model.GitlabType
-
-	account.Spec.AvatarURL = gitlabAccount.AvatarURL
-	account.Spec.HTMLURL = gitlabAccount.WebsiteURL
-	account.Spec.LoginName = gitlabAccount.Username
-	account.Spec.GitLoginName = gitlabLoginName
-	account.Spec.DisplayName = gitlabAccount.Name
-
-	return account
-
-}
-
-func (c *client) getGitlabRepos(gitlabAccessToken string) ([]v3.SourceCodeRepository, error) {
-	url := c.API + "/projects?membership=true"
-	var repos []gitlab.Project
-	responses, err := paginateGitlab(gitlabAccessToken, url)
-	if err != nil {
-		return nil, err
-	}
-	for _, response := range responses {
-		defer response.Body.Close()
-		b, err := ioutil.ReadAll(response.Body)
-		if err != nil {
-			return nil, err
-		}
-		var reposObj []gitlab.Project
-		if err := json.Unmarshal(b, &reposObj); err != nil {
-			return nil, err
-		}
-		repos = append(repos, reposObj...)
-	}
-
-	return convertRepos(repos), nil
-}
-
-func convertRepos(repos []gitlab.Project) []v3.SourceCodeRepository {
-	result := []v3.SourceCodeRepository{}
-	for _, repo := range repos {
-		r := v3.SourceCodeRepository{}
-
-		r.Spec.URL = repo.HTTPURLToRepo
-		//r.Spec.Language = No language info in gitlab API
-		r.Spec.DefaultBranch = repo.DefaultBranch
-
-		accessLevel := getAccessLevel(repo)
-		if accessLevel >= accessLevelReporter {
-			// 20 for 'Reporter' level
-			r.Spec.Permissions.Pull = true
-		}
-		if accessLevel >= accessLevelDeveloper {
-			// 30 for 'Developer' level
-			r.Spec.Permissions.Push = true
-		}
-		if accessLevel >= accessLevelMaster {
-			// 40 for 'Master' level and 50 for 'Owner' level
-			r.Spec.Permissions.Admin = true
-		}
-		result = append(result, r)
-	}
-	return result
-}
-
-func getAccessLevel(repo gitlab.Project) int {
-	accessLevel := 0
-	if repo.Permissions == nil {
-		return accessLevel
-	}
-	if repo.Permissions.ProjectAccess != nil && int(repo.Permissions.ProjectAccess.AccessLevel) > accessLevel {
-		accessLevel = int(repo.Permissions.ProjectAccess.AccessLevel)
-	}
-	if repo.Permissions.GroupAccess != nil && int(repo.Permissions.GroupAccess.AccessLevel) > accessLevel {
-		accessLevel = int(repo.Permissions.GroupAccess.AccessLevel)
-	}
-	return accessLevel
 }
 
 func getUserRepoFromURL(repoURL string) (string, string, error) {

@@ -63,6 +63,18 @@ type PaginatedHooks struct {
 	Values []Hook `json:"values"`
 }
 
+type Status struct {
+	Links       *Links `json:"links"`
+	Key         string `json:"key"`
+	RefName     string `json:"refname"`
+	URL         string `json:"url"`
+	State       string `json:"state"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Created     string `json:"created_on"`
+	Updated     string `json:"updated_on"`
+}
+
 type Ref struct {
 	Type   string  `json:"type"`
 	Name   string  `json:"name"`

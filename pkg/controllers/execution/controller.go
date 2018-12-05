@@ -13,18 +13,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 )
 
-const (
-	statusPending = "pending"
-	statusSuccess = ""
-	statusFailed  = ""
-)
-
-var handledToStatus = map[string]string{
-	"True":    statusSuccess,
-	"False":   statusFailed,
-	"Unknown": statusPending,
-}
-
 func Register(ctx context.Context, scaledContext *config.ScaledContext) error {
 	client := v1.From(ctx)
 	fl := &webhookExecutionLifecycle{
@@ -54,9 +42,8 @@ func (f *webhookExecutionLifecycle) Sync(key string, obj *v1.GitWebHookExecution
 
 func (f *webhookExecutionLifecycle) updateStatus(obj *v1.GitWebHookExecution) error {
 	appliedStatus := obj.Status.AppliedStatus
-	handled := v1.GitWebHookExecutionConditionHandled.GetStatus(obj)
-	toApplyStatus := handledToStatus[handled]
-	if toApplyStatus == appliedStatus {
+	handledStatus := v1.GitWebHookExecutionConditionHandled.GetStatus(obj)
+	if handledStatus == appliedStatus {
 		return nil
 	}
 	receiverID := obj.Spec.GitWebHookReceiverName
@@ -84,11 +71,11 @@ func (f *webhookExecutionLifecycle) updateStatus(obj *v1.GitWebHookExecution) er
 	if err != nil {
 		return err
 	}
-	if err := remote.UpdateStatus(obj, toApplyStatus, accessToken); err != nil {
+	if err := remote.UpdateStatus(obj, accessToken); err != nil {
 		return err
 	}
 	toUpdate := obj.DeepCopy()
-	toUpdate.Status.AppliedStatus = toApplyStatus
+	toUpdate.Status.AppliedStatus = handledStatus
 	_, err = f.webhookExecutions.Update(toUpdate)
 	return err
 }

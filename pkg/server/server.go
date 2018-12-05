@@ -2,10 +2,14 @@ package server
 
 import (
 	"context"
+	"net/http"
+
+	"github.com/gorilla/mux"
 	"github.com/rancher/norman"
 	"github.com/rancher/norman/types"
 	"github.com/rancher/types/config"
 	"github.com/rancher/webhookinator/pkg/controllers/webhook"
+	"github.com/rancher/webhookinator/pkg/pipeline/hooks"
 	"github.com/rancher/webhookinator/types/apis/webhookinator.cattle.io/v1"
 )
 
@@ -33,4 +37,13 @@ func Config(scaledContext *config.ScaledContext) *norman.Config {
 			},
 		},
 	}
+}
+
+func HandleHooks(handler http.Handler, client v1.Interface) http.Handler {
+	root := mux.NewRouter()
+	hookHandler := hooks.New(client)
+	root.UseEncodedPath()
+	root.Handle("/", handler)
+	root.Handle("/hooks", hookHandler)
+	return root
 }

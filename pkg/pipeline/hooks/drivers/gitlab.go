@@ -8,10 +8,10 @@ import (
 	"strings"
 
 	"github.com/pkg/errors"
-	"github.com/rancher/rancher/pkg/pipeline/remote/model"
-	"github.com/rancher/rancher/pkg/pipeline/utils"
 	"github.com/rancher/rancher/pkg/ref"
-	"github.com/rancher/types/apis/project.cattle.io/v3"
+	"github.com/rancher/webhookinator/pkg/pipeline/remote/model"
+	"github.com/rancher/webhookinator/pkg/pipeline/utils"
+	"github.com/rancher/webhookinator/types/apis/webhookinator.cattle.io/v1"
 	"github.com/xanzy/go-gitlab"
 )
 
@@ -29,10 +29,8 @@ const (
 )
 
 type GitlabDriver struct {
-	PipelineLister             v3.PipelineLister
-	PipelineExecutions         v3.PipelineExecutionInterface
-	SourceCodeCredentials      v3.SourceCodeCredentialInterface
-	SourceCodeCredentialLister v3.SourceCodeCredentialLister
+	GitWebHookReceiverLister v1.GitWebHookReceiverLister
+	GitWebHookExecutions     v1.GitWebHookExecutionInterface
 }
 
 func (g GitlabDriver) Execute(req *http.Request) (int, error) {
@@ -45,9 +43,9 @@ func (g GitlabDriver) Execute(req *http.Request) (int, error) {
 		return http.StatusUnprocessableEntity, fmt.Errorf("not trigger for event:%s", event)
 	}
 
-	pipelineID := req.URL.Query().Get("pipelineId")
-	ns, name := ref.Parse(pipelineID)
-	pipeline, err := g.PipelineLister.Get(ns, name)
+	receiverID := req.URL.Query().Get(utils.GitWebHookParam)
+	ns, name := ref.Parse(receiverID)
+	receiver, err := g.GitWebHookReceiverLister.Get(ns, name)
 	if err != nil {
 		return http.StatusInternalServerError, err
 	}
@@ -56,12 +54,8 @@ func (g GitlabDriver) Execute(req *http.Request) (int, error) {
 		return http.StatusUnprocessableEntity, err
 	}
 
-	if pipeline.Status.Token != signature {
+	if receiver.Status.Token != signature {
 		return http.StatusUnprocessableEntity, errors.New("gitlab webhook invalid token")
-	}
-
-	if pipeline.Status.PipelineState == "inactive" {
-		return http.StatusUnavailableForLegalReasons, errors.New("pipeline is not active")
 	}
 
 	info := &model.BuildInfo{}
@@ -82,7 +76,7 @@ func (g GitlabDriver) Execute(req *http.Request) (int, error) {
 		}
 	}
 
-	return validateAndGeneratePipelineExecution(g.PipelineExecutions, g.SourceCodeCredentials, g.SourceCodeCredentialLister, info, pipeline)
+	return validateAndGenerateExecution(g.GitWebHookExecutions, info, receiver)
 }
 
 func gitlabParsePushPayload(raw []byte) (*model.BuildInfo, error) {

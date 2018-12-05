@@ -3,8 +3,8 @@ package hooks
 import (
 	"net/http"
 
-	"github.com/rancher/rancher/pkg/pipeline/hooks/drivers"
-	"github.com/rancher/types/config"
+	"github.com/rancher/webhookinator/pkg/pipeline/hooks/drivers"
+	"github.com/rancher/webhookinator/types/apis/webhookinator.cattle.io/v1"
 )
 
 var Drivers map[string]Driver
@@ -13,35 +13,24 @@ type Driver interface {
 	Execute(req *http.Request) (int, error)
 }
 
-func RegisterDrivers(Management *config.ScaledContext) {
-	pipelineLister := Management.Project.Pipelines("").Controller().Lister()
-	pipelineExecutions := Management.Project.PipelineExecutions("")
-	sourceCodeCredentials := Management.Project.SourceCodeCredentials("")
-	sourceCodeCredentialLister := Management.Project.SourceCodeCredentials("").Controller().Lister()
-
+func RegisterDrivers(client v1.Interface) {
+	gitWebHookReceiverLister := client.GitWebHookReceivers("").Controller().Lister()
+	gitWebHookExecutions := client.GitWebHookExecutions("")
 	Drivers = map[string]Driver{}
 	Drivers[drivers.GithubWebhookHeader] = drivers.GithubDriver{
-		PipelineLister:             pipelineLister,
-		PipelineExecutions:         pipelineExecutions,
-		SourceCodeCredentials:      sourceCodeCredentials,
-		SourceCodeCredentialLister: sourceCodeCredentialLister,
+		GitWebHookReceiverLister: gitWebHookReceiverLister,
+		GitWebHookExecutions:     gitWebHookExecutions,
 	}
 	Drivers[drivers.GitlabWebhookHeader] = drivers.GitlabDriver{
-		PipelineLister:             pipelineLister,
-		PipelineExecutions:         pipelineExecutions,
-		SourceCodeCredentials:      sourceCodeCredentials,
-		SourceCodeCredentialLister: sourceCodeCredentialLister,
+		GitWebHookReceiverLister: gitWebHookReceiverLister,
+		GitWebHookExecutions:     gitWebHookExecutions,
 	}
 	Drivers[drivers.BitbucketCloudWebhookHeader] = drivers.BitbucketCloudDriver{
-		PipelineLister:             pipelineLister,
-		PipelineExecutions:         pipelineExecutions,
-		SourceCodeCredentials:      sourceCodeCredentials,
-		SourceCodeCredentialLister: sourceCodeCredentialLister,
+		GitWebHookReceiverLister: gitWebHookReceiverLister,
+		GitWebHookExecutions:     gitWebHookExecutions,
 	}
 	Drivers[drivers.BitbucketServerWebhookHeader] = drivers.BitbucketServerDriver{
-		PipelineLister:             pipelineLister,
-		PipelineExecutions:         pipelineExecutions,
-		SourceCodeCredentials:      sourceCodeCredentials,
-		SourceCodeCredentialLister: sourceCodeCredentialLister,
+		GitWebHookReceiverLister: gitWebHookReceiverLister,
+		GitWebHookExecutions:     gitWebHookExecutions,
 	}
 }

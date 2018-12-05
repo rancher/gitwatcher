@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/rancher/webhookinator/pkg/pipeline/remote/model"
-	"github.com/rancher/webhookinator/types/apis/webhookinator.cattle.io/v1"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -18,15 +16,23 @@ import (
 	"github.com/rancher/rancher/pkg/ref"
 	"github.com/rancher/rancher/pkg/settings"
 	"github.com/rancher/types/apis/project.cattle.io/v3"
+	"github.com/rancher/webhookinator/pkg/pipeline/remote/model"
+	"github.com/rancher/webhookinator/pkg/pipeline/utils"
+	"github.com/rancher/webhookinator/types/apis/webhookinator.cattle.io/v1"
 	"golang.org/x/oauth2"
 )
 
 const (
-	apiEndpoint   = "https://api.bitbucket.org/2.0"
-	authURL       = "https://bitbucket.org/site/oauth2/authorize"
-	tokenURL      = "https://bitbucket.org/site/oauth2/access_token"
-	maxPerPage    = "100"
-	cloneUserName = "x-token-auth"
+	apiEndpoint      = "https://api.bitbucket.org/2.0"
+	authURL          = "https://bitbucket.org/site/oauth2/authorize"
+	tokenURL         = "https://bitbucket.org/site/oauth2/access_token"
+	maxPerPage       = "100"
+	statusInProgress = "INPROGRESS"
+	statusSuccessful = "SUCCESSFUL"
+	statusFailed     = "FAILED"
+	descInProgress   = "This build is in progress"
+	descSuccessful   = "This build is successful"
+	descFailed       = "This build is failed"
 )
 
 type client struct {
@@ -37,7 +43,7 @@ type client struct {
 
 func New(config *v3.BitbucketCloudPipelineConfig) (model.Remote, error) {
 	if config == nil {
-		return nil, errors.New("empty gitlab config")
+		return nil, errors.New("empty bitbucket cloud config")
 	}
 	glClient := &client{
 		ClientID:     config.ClientID,
@@ -56,7 +62,7 @@ func (c *client) CreateHook(receiver *v1.GitWebHookReceiver, accessToken string)
 	if err != nil {
 		return err
 	}
-	hookURL := fmt.Sprintf("%s/hooks?pipelineId=%s", settings.ServerURL.Get(), ref.Ref(receiver))
+	hookURL := fmt.Sprintf("%s/%s%s", settings.ServerURL.Get(), utils.HooksEndpointPrefix, ref.Ref(receiver))
 	hook := Hook{
 		Description:          "Webhook created by Rancher Pipeline",
 		URL:                  hookURL,
@@ -99,9 +105,40 @@ func (c *client) DeleteHook(receiver *v1.GitWebHookReceiver, accessToken string)
 	return nil
 }
 
-func (c *client) UpdateStatus(execution *v1.GitWebHookExecution, status string, accessToken string) error {
-	//TODO
-	return nil
+func (c *client) UpdateStatus(execution *v1.GitWebHookExecution, accessToken string) error {
+	user, repo, err := getUserRepoFromURL(execution.Spec.RepositoryURL)
+	if err != nil {
+		return err
+	}
+	commit := execution.Spec.Commit
+	state, desc := convertStatusDesc(execution)
+	status := Status{
+		Key:         utils.StatusContext,
+		URL:         execution.Status.StatusURL,
+		State:       state,
+		Description: desc,
+	}
+	url := fmt.Sprintf("%s/repositories/%s/%s/commit/%s/statuses/build", apiEndpoint, user, repo, commit)
+	b, err := json.Marshal(status)
+	if err != nil {
+		return err
+	}
+	reader := bytes.NewReader(b)
+
+	_, err = doRequestToBitbucket(http.MethodPost, url, accessToken, nil, reader)
+	return err
+}
+
+func convertStatusDesc(execution *v1.GitWebHookExecution) (string, string) {
+	handleCondition := v1.GitWebHookExecutionConditionHandled.GetStatus(execution)
+	switch handleCondition {
+	case "True":
+		return statusSuccessful, descSuccessful
+	case "False":
+		return statusFailed, descFailed
+	default:
+		return statusInProgress, descInProgress
+	}
 }
 
 func (c *client) getHook(receiver *v1.GitWebHookReceiver, accessToken string) (*Hook, error) {
@@ -122,7 +159,7 @@ func (c *client) getHook(receiver *v1.GitWebHookReceiver, accessToken string) (*
 		return nil, err
 	}
 	for _, hook := range hooks.Values {
-		if strings.HasSuffix(hook.URL, fmt.Sprintf("hooks?pipelineId=%s", ref.Ref(receiver))) {
+		if strings.HasSuffix(hook.URL, fmt.Sprintf("%s%s", utils.HooksEndpointPrefix, ref.Ref(receiver))) {
 			result = &hook
 			break
 		}
