@@ -17,7 +17,7 @@ import (
 func Register(ctx context.Context, scaledContext *config.ScaledContext) error {
 	client := v1.From(ctx)
 	fl := &webhookReceiverLifecycle{
-		webhookReceiverClient:      client.GitWebHookReceivers(""),
+		webhookReceivers:           client.GitWebHookReceivers(""),
 		webhookReceiverLister:      client.GitWebHookReceivers("").Controller().Lister(),
 		sourceCodeCredentials:      scaledContext.Project.SourceCodeCredentials(""),
 		sourceCodeCredentialLister: scaledContext.Project.SourceCodeCredentials("").Controller().Lister(),
@@ -28,7 +28,7 @@ func Register(ctx context.Context, scaledContext *config.ScaledContext) error {
 }
 
 type webhookReceiverLifecycle struct {
-	webhookReceiverClient      v1.GitWebHookReceiverInterface
+	webhookReceivers           v1.GitWebHookReceiverInterface
 	webhookReceiverLister      v1.GitWebHookReceiverLister
 	sourceCodeCredentialLister v3.SourceCodeCredentialLister
 	sourceCodeCredentials      v3.SourceCodeCredentialInterface
