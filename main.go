@@ -78,7 +78,6 @@ func run(c *cli.Context) error {
 	addr := c.String("listen-address")
 	logrus.Infof("Listening on %s", addr)
 	handler := server.HandleHooks(srv.APIHandler, v1.From(ctx))
-
 	go func() {
 		if err := http.ListenAndServe(addr, handler); err != nil {
 			logrus.Fatalf("Failed to listen on %s: %v", addr, err)

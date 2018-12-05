@@ -4,15 +4,15 @@ import (
 	"time"
 
 	"github.com/rancher/types/apis/project.cattle.io/v3"
-	"github.com/rancher/webhookinator/pkg/pipeline/remote/model"
+	"github.com/rancher/webhookinator/pkg/providers/model"
 )
 
 // EnsureAccessToken Checks expiry and do token refresh when needed
-func EnsureAccessToken(credentialInterface v3.SourceCodeCredentialInterface, remote model.Remote, credential *v3.SourceCodeCredential) (string, error) {
+func EnsureAccessToken(credentialInterface v3.SourceCodeCredentialInterface, provider model.Provider, credential *v3.SourceCodeCredential) (string, error) {
 	if credential == nil {
 		return "", nil
 	}
-	refresher, ok := remote.(model.Refresher)
+	refresher, ok := provider.(model.Refresher)
 	if !ok {
 		return credential.Spec.AccessToken, nil
 	}

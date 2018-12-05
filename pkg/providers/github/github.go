@@ -16,8 +16,8 @@ import (
 	"github.com/rancher/rancher/pkg/ref"
 	"github.com/rancher/rancher/pkg/settings"
 	"github.com/rancher/types/apis/project.cattle.io/v3"
-	"github.com/rancher/webhookinator/pkg/pipeline/remote/model"
-	"github.com/rancher/webhookinator/pkg/pipeline/utils"
+	"github.com/rancher/webhookinator/pkg/providers/model"
+	"github.com/rancher/webhookinator/pkg/utils"
 	"github.com/rancher/webhookinator/types/apis/webhookinator.cattle.io/v1"
 	"github.com/sirupsen/logrus"
 	"github.com/tomnomnom/linkheader"
@@ -55,7 +55,7 @@ var defaultClient = &client{
 	API:    defaultGithubAPI,
 }
 
-func New(config *v3.GithubPipelineConfig) (model.Remote, error) {
+func New(config *v3.GithubPipelineConfig) (model.Provider, error) {
 	if config == nil {
 		return defaultClient, nil
 	}

@@ -5,7 +5,7 @@ import (
 	"github.com/rancher/webhookinator/types/apis/webhookinator.cattle.io/v1"
 )
 
-type Remote interface {
+type Provider interface {
 	Type() string
 
 	CreateHook(receiver *v1.GitWebHookReceiver, accessToken string) error

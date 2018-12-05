@@ -7,8 +7,8 @@ import (
 	"github.com/rancher/rancher/pkg/ref"
 	"github.com/rancher/types/apis/project.cattle.io/v3"
 	"github.com/rancher/types/config"
-	"github.com/rancher/webhookinator/pkg/pipeline/remote"
-	"github.com/rancher/webhookinator/pkg/pipeline/utils"
+	remoteproviders "github.com/rancher/webhookinator/pkg/providers"
+	"github.com/rancher/webhookinator/pkg/utils"
 	"github.com/rancher/webhookinator/types/apis/webhookinator.cattle.io/v1"
 	"github.com/satori/go.uuid"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -68,15 +68,15 @@ func (f *webhookReceiverLifecycle) createHook(obj *v1.GitWebHookReceiver) error 
 	if err != nil {
 		return err
 	}
-	remote, err := remote.New(scpConfig)
+	provider, err := remoteproviders.New(scpConfig)
 	if err != nil {
 		return err
 	}
-	accessToken, err = utils.EnsureAccessToken(f.sourceCodeCredentials, remote, credential)
+	accessToken, err = utils.EnsureAccessToken(f.sourceCodeCredentials, provider, credential)
 	if err != nil {
 		return err
 	}
-	return remote.CreateHook(obj, accessToken)
+	return provider.CreateHook(obj, accessToken)
 }
 
 func (f *webhookReceiverLifecycle) deleteHook(obj *v1.GitWebHookReceiver) error {
@@ -91,13 +91,13 @@ func (f *webhookReceiverLifecycle) deleteHook(obj *v1.GitWebHookReceiver) error 
 	if err != nil {
 		return err
 	}
-	remote, err := remote.New(scpConfig)
+	provider, err := remoteproviders.New(scpConfig)
 	if err != nil {
 		return err
 	}
-	accessToken, err = utils.EnsureAccessToken(f.sourceCodeCredentials, remote, credential)
+	accessToken, err = utils.EnsureAccessToken(f.sourceCodeCredentials, provider, credential)
 	if err != nil {
 		return err
 	}
-	return remote.DeleteHook(obj, accessToken)
+	return provider.DeleteHook(obj, accessToken)
 }

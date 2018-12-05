@@ -1,87 +1,60 @@
-package bitbucketserver
+package bitbucketcloud
 
 import (
 	"bytes"
-	"crypto/x509"
 	"encoding/json"
-	"encoding/pem"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"net/http"
 	"regexp"
 	"strings"
+	"time"
 
-	"github.com/mrjones/oauth"
 	"github.com/pkg/errors"
 	"github.com/rancher/norman/httperror"
 	"github.com/rancher/rancher/pkg/ref"
 	"github.com/rancher/rancher/pkg/settings"
 	"github.com/rancher/types/apis/project.cattle.io/v3"
-	"github.com/rancher/webhookinator/pkg/pipeline/remote/model"
-	"github.com/rancher/webhookinator/pkg/pipeline/utils"
+	"github.com/rancher/webhookinator/pkg/providers/model"
+	"github.com/rancher/webhookinator/pkg/utils"
 	"github.com/rancher/webhookinator/types/apis/webhookinator.cattle.io/v1"
+	"golang.org/x/oauth2"
 )
 
 const (
-	maxPerPage        = "100"
-	requestTokenURL   = "%s/plugins/servlet/oauth/request-token"
-	authorizeTokenURL = "%s/plugins/servlet/oauth/authorize"
-	accessTokenURL    = "%s/plugins/servlet/oauth/access-token"
-	statusInProgress  = "INPROGRESS"
-	statusSuccessful  = "SUCCESSFUL"
-	statusFailed      = "FAILED"
-	descInProgress    = "This build is in progress"
-	descSuccessful    = "This build is successful"
-	descFailed        = "This build is failed"
+	apiEndpoint      = "https://api.bitbucket.org/2.0"
+	authURL          = "https://bitbucket.org/site/oauth2/authorize"
+	tokenURL         = "https://bitbucket.org/site/oauth2/access_token"
+	maxPerPage       = "100"
+	statusInProgress = "INPROGRESS"
+	statusSuccessful = "SUCCESSFUL"
+	statusFailed     = "FAILED"
+	descInProgress   = "This build is in progress"
+	descSuccessful   = "This build is successful"
+	descFailed       = "This build is failed"
 )
 
 type client struct {
-	BaseURL     string
-	ConsumerKey string
-	PrivateKey  string
-	RedirectURL string
+	ClientID     string
+	ClientSecret string
+	RedirectURL  string
 }
 
-func New(config *v3.BitbucketServerPipelineConfig) (model.Remote, error) {
+func New(config *v3.BitbucketCloudPipelineConfig) (model.Provider, error) {
 	if config == nil {
-		return nil, errors.New("empty bitbucket server config")
+		return nil, errors.New("empty bitbucket cloud config")
 	}
-	bsClient := &client{
-		ConsumerKey: config.ConsumerKey,
-		PrivateKey:  config.PrivateKey,
-		RedirectURL: config.RedirectURL,
+	glClient := &client{
+		ClientID:     config.ClientID,
+		ClientSecret: config.ClientSecret,
+		RedirectURL:  config.RedirectURL,
 	}
-	if config.TLS {
-		bsClient.BaseURL = "https://" + config.Hostname
-	} else {
-		bsClient.BaseURL = "http://" + config.Hostname
-	}
-	return bsClient, nil
+	return glClient, nil
 }
 
 func (c *client) Type() string {
-	return model.BitbucketServerType
-}
-
-func (c *client) getOauthConsumer() (*oauth.Consumer, error) {
-	keyBytes := []byte(c.PrivateKey)
-	block, _ := pem.Decode(keyBytes)
-	privateKey, err := x509.ParsePKCS1PrivateKey(block.Bytes)
-	if err != nil {
-		return nil, err
-	}
-
-	bitbucketOauthConsumer := oauth.NewRSAConsumer(
-		c.ConsumerKey,
-		privateKey,
-		oauth.ServiceProvider{
-			RequestTokenUrl:   fmt.Sprintf(requestTokenURL, c.BaseURL),
-			AuthorizeTokenUrl: fmt.Sprintf(authorizeTokenURL, c.BaseURL),
-			AccessTokenUrl:    fmt.Sprintf(accessTokenURL, c.BaseURL),
-			HttpMethod:        http.MethodPost,
-		})
-	return bitbucketOauthConsumer, nil
+	return model.BitbucketCloudType
 }
 
 func (c *client) CreateHook(receiver *v1.GitWebHookReceiver, accessToken string) error {
@@ -91,26 +64,24 @@ func (c *client) CreateHook(receiver *v1.GitWebHookReceiver, accessToken string)
 	}
 	hookURL := fmt.Sprintf("%s/%s%s", settings.ServerURL.Get(), utils.HooksEndpointPrefix, ref.Ref(receiver))
 	hook := Hook{
-		Name:   "pipeline webhook",
-		URL:    hookURL,
-		Active: true,
-		Configuration: HookConfiguration{
-			Secret: receiver.Status.Token,
-		},
+		Description:          "Webhook created by Rancher Pipeline",
+		URL:                  hookURL,
+		Active:               true,
+		SkipCertVerification: true,
 		Events: []string{
-			"repo:refs_changed",
-			"pr:opened",
-			"pr:modified",
+			"repo:push",
+			"pullrequest:updated",
+			"pullrequest:created",
 		},
 	}
-
-	url := fmt.Sprintf("%s/rest/api/1.0/projects/%s/repos/%s/webhooks", c.BaseURL, user, repo)
+	url := fmt.Sprintf("%s/repositories/%s/%s/hooks", apiEndpoint, user, repo)
 	b, err := json.Marshal(hook)
 	if err != nil {
 		return err
 	}
 	reader := bytes.NewReader(b)
-	_, err = c.doRequestToBitbucket(http.MethodPost, url, accessToken, nil, reader)
+
+	_, err = doRequestToBitbucket(http.MethodPost, url, accessToken, nil, reader)
 	return err
 }
 
@@ -125,8 +96,8 @@ func (c *client) DeleteHook(receiver *v1.GitWebHookReceiver, accessToken string)
 		return err
 	}
 	if hook != nil {
-		url := fmt.Sprintf("%s/rest/api/1.0/projects/%s/repos/%s/webhooks/%d", c.BaseURL, user, repo, hook.ID)
-		_, err := c.doRequestToBitbucket(http.MethodDelete, url, accessToken, nil, nil)
+		url := fmt.Sprintf("%s/repositories/%s/%s/hooks/%v", apiEndpoint, user, repo, hook.UUID)
+		_, err := doRequestToBitbucket(http.MethodDelete, url, accessToken, nil, nil)
 		if err != nil {
 			return err
 		}
@@ -135,22 +106,26 @@ func (c *client) DeleteHook(receiver *v1.GitWebHookReceiver, accessToken string)
 }
 
 func (c *client) UpdateStatus(execution *v1.GitWebHookExecution, accessToken string) error {
+	user, repo, err := getUserRepoFromURL(execution.Spec.RepositoryURL)
+	if err != nil {
+		return err
+	}
 	commit := execution.Spec.Commit
 	state, desc := convertStatusDesc(execution)
 	status := Status{
-		URL:         execution.Status.StatusURL,
 		Key:         utils.StatusContext,
+		URL:         execution.Status.StatusURL,
 		State:       state,
 		Description: desc,
 	}
-
-	url := fmt.Sprintf("%s/rest/build-status/1.0/commits/%s", c.BaseURL, commit)
+	url := fmt.Sprintf("%s/repositories/%s/%s/commit/%s/statuses/build", apiEndpoint, user, repo, commit)
 	b, err := json.Marshal(status)
 	if err != nil {
 		return err
 	}
 	reader := bytes.NewReader(b)
-	_, err = c.doRequestToBitbucket(http.MethodPost, url, accessToken, nil, reader)
+
+	_, err = doRequestToBitbucket(http.MethodPost, url, accessToken, nil, reader)
 	return err
 }
 
@@ -174,9 +149,9 @@ func (c *client) getHook(receiver *v1.GitWebHookReceiver, accessToken string) (*
 
 	var hooks PaginatedHooks
 	var result *Hook
-	url := fmt.Sprintf("%s/rest/api/1.0/projects/%s/repos/%s/webhooks", c.BaseURL, user, repo)
+	url := fmt.Sprintf("%s/repositories/%s/%s/hooks", apiEndpoint, user, repo)
 
-	b, err := c.getFromBitbucket(url, accessToken)
+	b, err := getFromBitbucket(url, accessToken)
 	if err != nil {
 		return nil, err
 	}
@@ -192,31 +167,57 @@ func (c *client) getHook(receiver *v1.GitWebHookReceiver, accessToken string) (*
 	return result, nil
 }
 
-func (c *client) getFromBitbucket(url string, accessToken string) ([]byte, error) {
-	return c.doRequestToBitbucket(http.MethodGet, url, accessToken, nil, nil)
+func (c *client) Refresh(cred *v3.SourceCodeCredential) (bool, error) {
+	if cred == nil {
+		return false, errors.New("cannot refresh empty credentials")
+	}
+	config := &oauth2.Config{
+		ClientID:     c.ClientID,
+		ClientSecret: c.ClientSecret,
+		RedirectURL:  c.RedirectURL,
+		Endpoint: oauth2.Endpoint{
+			AuthURL:  authURL,
+			TokenURL: tokenURL,
+		},
+	}
+	source := config.TokenSource(
+		oauth2.NoContext, &oauth2.Token{RefreshToken: cred.Spec.RefreshToken})
+
+	token, err := source.Token()
+	if err != nil || len(token.AccessToken) == 0 {
+		return false, err
+	}
+
+	cred.Spec.AccessToken = token.AccessToken
+	cred.Spec.RefreshToken = token.RefreshToken
+	cred.Spec.Expiry = token.Expiry.Format(time.RFC3339)
+
+	return true, nil
+
 }
 
-func (c *client) doRequestToBitbucket(method string, url string, accessToken string, header map[string]string, body io.Reader) ([]byte, error) {
+func getFromBitbucket(url string, accessToken string) ([]byte, error) {
+	return doRequestToBitbucket(http.MethodGet, url, accessToken, nil, nil)
+}
+
+func doRequestToBitbucket(method string, url string, accessToken string, header map[string]string, body io.Reader) ([]byte, error) {
 	req, err := http.NewRequest(method, url, body)
 	if err != nil {
 		return nil, err
 	}
-	consumer, err := c.getOauthConsumer()
-	if err != nil {
-		return nil, err
-	}
-	var token oauth.AccessToken
-	token.Token = accessToken
-	client, err := consumer.MakeHttpClient(&token)
-	if err != nil {
-		return nil, err
+	client := &http.Client{
+		Timeout: 15 * time.Second,
 	}
 	q := req.URL.Query()
+	//set to max 100 per page to reduce query time
 	if method == http.MethodGet {
-		q.Set("limit", maxPerPage)
+		q.Set("pagelen", maxPerPage)
+	}
+	if accessToken != "" {
+		q.Set("access_token", accessToken)
 	}
 	req.URL.RawQuery = q.Encode()
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Add("Cache-control", "no-cache")
 	for k, v := range header {
 		req.Header.Set(k, v)
 	}
@@ -225,6 +226,7 @@ func (c *client) doRequestToBitbucket(method string, url string, accessToken str
 		return nil, err
 	}
 	defer resp.Body.Close()
+	// Check the status code
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusBadRequest {
 		var body bytes.Buffer
 		io.Copy(&body, resp.Body)

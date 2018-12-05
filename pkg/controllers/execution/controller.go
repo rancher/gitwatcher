@@ -7,8 +7,8 @@ import (
 	"github.com/rancher/rancher/pkg/ref"
 	"github.com/rancher/types/apis/project.cattle.io/v3"
 	"github.com/rancher/types/config"
-	"github.com/rancher/webhookinator/pkg/pipeline/remote"
-	"github.com/rancher/webhookinator/pkg/pipeline/utils"
+	remoteproviders "github.com/rancher/webhookinator/pkg/providers"
+	"github.com/rancher/webhookinator/pkg/utils"
 	"github.com/rancher/webhookinator/types/apis/webhookinator.cattle.io/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 )
@@ -63,15 +63,15 @@ func (f *webhookExecutionLifecycle) updateStatus(obj *v1.GitWebHookExecution) er
 	if err != nil {
 		return err
 	}
-	remote, err := remote.New(scpConfig)
+	provider, err := remoteproviders.New(scpConfig)
 	if err != nil {
 		return err
 	}
-	accessToken, err = utils.EnsureAccessToken(f.sourceCodeCredentials, remote, credential)
+	accessToken, err = utils.EnsureAccessToken(f.sourceCodeCredentials, provider, credential)
 	if err != nil {
 		return err
 	}
-	if err := remote.UpdateStatus(obj, accessToken); err != nil {
+	if err := provider.UpdateStatus(obj, accessToken); err != nil {
 		return err
 	}
 	toUpdate := obj.DeepCopy()

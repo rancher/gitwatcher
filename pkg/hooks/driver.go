@@ -3,7 +3,7 @@ package hooks
 import (
 	"net/http"
 
-	"github.com/rancher/webhookinator/pkg/pipeline/hooks/drivers"
+	"github.com/rancher/webhookinator/pkg/hooks/drivers"
 	"github.com/rancher/webhookinator/types/apis/webhookinator.cattle.io/v1"
 )
 

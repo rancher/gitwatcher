@@ -9,8 +9,8 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/rancher/rancher/pkg/ref"
-	"github.com/rancher/webhookinator/pkg/pipeline/remote/model"
-	"github.com/rancher/webhookinator/pkg/pipeline/utils"
+	"github.com/rancher/webhookinator/pkg/providers/model"
+	"github.com/rancher/webhookinator/pkg/utils"
 	"github.com/rancher/webhookinator/types/apis/webhookinator.cattle.io/v1"
 	"github.com/xanzy/go-gitlab"
 )
