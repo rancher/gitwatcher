@@ -5,13 +5,14 @@ import (
 	"crypto/sha1"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/google/go-github/github"
-	"github.com/pkg/errors"
 	"github.com/rancher/rancher/pkg/ref"
 	"github.com/rancher/webhookinator/pkg/providers/model"
 	"github.com/rancher/webhookinator/pkg/utils"
@@ -54,6 +55,10 @@ func (g GithubDriver) Execute(req *http.Request) (int, error) {
 	if err != nil {
 		return http.StatusInternalServerError, err
 	}
+	if !receiver.Spec.Enabled {
+		return http.StatusUnavailableForLegalReasons, errors.New("webhook receiver is disabled")
+	}
+
 	body, err := ioutil.ReadAll(req.Body)
 	if err != nil {
 		return http.StatusUnprocessableEntity, err
@@ -113,8 +118,8 @@ func parsePushPayload(raw []byte) (*model.BuildInfo, error) {
 	if strings.HasPrefix(ref, RefsTagPrefix) {
 		//git tag is triggered as a push event
 		info.Event = utils.WebhookEventTag
+		info.Tag = strings.TrimPrefix(ref, RefsTagPrefix)
 		info.Branch = strings.TrimPrefix(ref, RefsTagPrefix)
-
 	} else {
 		info.Event = utils.WebhookEventPush
 		info.Branch = strings.TrimPrefix(payload.GetRef(), RefsBranchPrefix)
@@ -140,6 +145,7 @@ func parsePullRequestPayload(raw []byte) (*model.BuildInfo, error) {
 	info.TriggerType = utils.TriggerTypeWebhook
 	info.Event = utils.WebhookEventPullRequest
 	info.Branch = payload.PullRequest.Base.GetRef()
+	info.PR = strconv.Itoa(payload.PullRequest.GetNumber())
 	info.Ref = fmt.Sprintf("refs/pull/%d/head", payload.PullRequest.GetNumber())
 	info.HTMLLink = payload.PullRequest.GetHTMLURL()
 	info.Title = payload.PullRequest.GetTitle()

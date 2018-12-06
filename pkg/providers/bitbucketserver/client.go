@@ -15,8 +15,6 @@ import (
 	"github.com/mrjones/oauth"
 	"github.com/pkg/errors"
 	"github.com/rancher/norman/httperror"
-	"github.com/rancher/rancher/pkg/ref"
-	"github.com/rancher/rancher/pkg/settings"
 	"github.com/rancher/types/apis/project.cattle.io/v3"
 	"github.com/rancher/webhookinator/pkg/providers/model"
 	"github.com/rancher/webhookinator/pkg/utils"
@@ -89,10 +87,9 @@ func (c *client) CreateHook(receiver *v1.GitWebHookReceiver, accessToken string)
 	if err != nil {
 		return err
 	}
-	hookURL := fmt.Sprintf("%s/%s%s", settings.ServerURL.Get(), utils.HooksEndpointPrefix, ref.Ref(receiver))
 	hook := Hook{
 		Name:   "pipeline webhook",
-		URL:    hookURL,
+		URL:    utils.GetHookEndpoint(receiver),
 		Active: true,
 		Configuration: HookConfiguration{
 			Secret: receiver.Status.Token,
@@ -184,7 +181,7 @@ func (c *client) getHook(receiver *v1.GitWebHookReceiver, accessToken string) (*
 		return nil, err
 	}
 	for _, hook := range hooks.Values {
-		if strings.HasSuffix(hook.URL, fmt.Sprintf("%s%s", utils.HooksEndpointPrefix, ref.Ref(receiver))) {
+		if strings.HasSuffix(hook.URL, utils.GetHookEndpointSuffix(receiver)) {
 			result = &hook
 			break
 		}

@@ -2,12 +2,13 @@ package drivers
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"strconv"
 	"strings"
 
-	"github.com/pkg/errors"
 	"github.com/rancher/rancher/pkg/ref"
 	"github.com/rancher/webhookinator/pkg/providers/model"
 	"github.com/rancher/webhookinator/pkg/utils"
@@ -49,6 +50,10 @@ func (g GitlabDriver) Execute(req *http.Request) (int, error) {
 	if err != nil {
 		return http.StatusInternalServerError, err
 	}
+	if !receiver.Spec.Enabled {
+		return http.StatusUnavailableForLegalReasons, errors.New("webhook receiver is disabled")
+	}
+
 	body, err := ioutil.ReadAll(req.Body)
 	if err != nil {
 		return http.StatusUnprocessableEntity, err
@@ -127,6 +132,7 @@ func gitlabParseMergeRequestPayload(raw []byte) (*model.BuildInfo, error) {
 	info.TriggerType = utils.TriggerTypeWebhook
 	info.Event = utils.WebhookEventPullRequest
 	info.Branch = payload.ObjectAttributes.TargetBranch
+	info.PR = strconv.Itoa(payload.ObjectAttributes.IID)
 	info.Ref = fmt.Sprintf("refs/merge-requests/%d/head", payload.ObjectAttributes.IID)
 	info.HTMLLink = payload.ObjectAttributes.URL
 	info.Title = payload.ObjectAttributes.Title
@@ -151,8 +157,9 @@ func gitlabParseTagPayload(raw []byte) (*model.BuildInfo, error) {
 	info.Event = utils.WebhookEventTag
 	info.Ref = payload.Ref
 	tag := strings.TrimPrefix(payload.Ref, RefsTagPrefix)
-	info.Message = "tag " + tag
+	info.Tag = tag
 	info.Branch = tag
+	info.Message = "tag " + tag
 	info.Commit = payload.After
 	info.Author = payload.UserName
 	info.AvatarURL = payload.UserAvatar

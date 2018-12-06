@@ -14,13 +14,11 @@ import (
 	"github.com/google/go-github/github"
 	"github.com/rancher/norman/httperror"
 	"github.com/rancher/rancher/pkg/ref"
-	"github.com/rancher/rancher/pkg/settings"
 	"github.com/rancher/types/apis/project.cattle.io/v3"
 	"github.com/rancher/webhookinator/pkg/providers/model"
 	"github.com/rancher/webhookinator/pkg/utils"
 	"github.com/rancher/webhookinator/types/apis/webhookinator.cattle.io/v1"
 	"github.com/sirupsen/logrus"
-	"github.com/tomnomnom/linkheader"
 )
 
 const (
@@ -38,7 +36,7 @@ const (
 	statusFailure = "failure"
 	descPending   = "This build is pending"
 	descSuccess   = "This build is success"
-	descFailure   = "This build is failure"
+	descFailure   = "This build is failed"
 )
 
 type client struct {
@@ -89,7 +87,6 @@ func (c *client) CreateHook(receiver *v1.GitWebHookReceiver, accessToken string)
 		return err
 	}
 
-	hookURL := fmt.Sprintf("%s/%s%s", settings.ServerURL.Get(), utils.HooksEndpointPrefix, ref.Ref(receiver))
 	events := []string{utils.WebhookEventPush, utils.WebhookEventPullRequest}
 	name := "web"
 	active := true
@@ -97,7 +94,7 @@ func (c *client) CreateHook(receiver *v1.GitWebHookReceiver, accessToken string)
 		Name:   &name,
 		Active: &active,
 		Config: map[string]interface{}{
-			hookConfigURL:         hookURL,
+			hookConfigURL:         utils.GetHookEndpoint(receiver),
 			hookConfigContentType: "json",
 			hookConfigSecret:      receiver.Status.Token,
 			hookConfigInsecureSSL: "1",
@@ -237,21 +234,6 @@ func doRequestToGithub(method string, url string, accessToken string, body io.Re
 	}
 
 	return resp, nil
-}
-
-func nextGithubPage(response *http.Response) string {
-	header := response.Header.Get("link")
-
-	if header != "" {
-		links := linkheader.Parse(header)
-		for _, link := range links {
-			if link.Rel == "next" {
-				return link.URL
-			}
-		}
-	}
-
-	return ""
 }
 
 func getUserRepoFromURL(repoURL string) (string, string, error) {

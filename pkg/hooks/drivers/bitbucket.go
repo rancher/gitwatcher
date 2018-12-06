@@ -2,9 +2,11 @@ package drivers
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"strconv"
 
 	"github.com/rancher/rancher/pkg/ref"
 	"github.com/rancher/webhookinator/pkg/providers/bitbucketcloud"
@@ -39,11 +41,14 @@ func (b BitbucketCloudDriver) Execute(req *http.Request) (int, error) {
 	if err != nil {
 		return http.StatusInternalServerError, err
 	}
+	if !receiver.Spec.Enabled {
+		return http.StatusUnavailableForLegalReasons, errors.New("webhook receiver is disabled")
+	}
+
 	body, err := ioutil.ReadAll(req.Body)
 	if err != nil {
 		return http.StatusUnprocessableEntity, err
 	}
-
 	info := &model.BuildInfo{}
 	if event == bitbucketCloudPushEvent {
 		info, err = parseBitbucketPushPayload(body)
@@ -81,6 +86,7 @@ func parseBitbucketPushPayload(raw []byte) (*model.BuildInfo, error) {
 		case "tag", "annotated_tag", "bookmark":
 			info.Event = utils.WebhookEventTag
 			info.Ref = RefsTagPrefix + change.New.Name
+			info.Tag = change.New.Name
 		default:
 			info.Event = utils.WebhookEventPush
 			info.Ref = RefsBranchPrefix + change.New.Name
@@ -102,8 +108,9 @@ func parseBitbucketPullRequestPayload(raw []byte) (*model.BuildInfo, error) {
 
 	info.TriggerType = utils.TriggerTypeWebhook
 	info.Event = utils.WebhookEventPullRequest
-	info.RepositoryURL = fmt.Sprintf("https://bitbucket.org/%s", payload.PullRequest.Source.Repository.FullName)
+	info.RepositoryURL = fmt.Sprintf("https://bitbucket.org/%s.git", payload.PullRequest.Source.Repository.FullName)
 	info.Branch = payload.PullRequest.Destination.Branch.Name
+	info.PR = strconv.Itoa(payload.PullRequest.ID)
 	info.Ref = RefsBranchPrefix + payload.PullRequest.Source.Branch.Name
 	info.HTMLLink = payload.PullRequest.Links.HTML.Href
 	info.Title = payload.PullRequest.Title

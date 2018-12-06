@@ -2,6 +2,7 @@ package drivers
 
 import (
 	"fmt"
+	"github.com/rancher/rancher/pkg/ref"
 	"net/http"
 
 	"github.com/rancher/webhookinator/pkg/providers/model"
@@ -41,6 +42,12 @@ func isEventActivated(info *model.BuildInfo, receiver *v1.GitWebHookReceiver) bo
 
 func initExecution(info *model.BuildInfo, receiver *v1.GitWebHookReceiver) *v1.GitWebHookExecution {
 	execution := &v1.GitWebHookExecution{}
+	execution.GenerateName = receiver.Name + "-"
+	execution.Namespace = receiver.Namespace
+	execution.Spec.GitWebHookReceiverName = ref.Ref(receiver)
+	execution.Labels = receiver.Spec.ExecutionLabels
+	execution.Spec.Tag = info.Tag
+	execution.Spec.PR = info.PR
 	execution.Spec.Branch = info.Branch
 	execution.Spec.Author = info.Author
 	execution.Spec.AuthorAvatar = info.AvatarURL

@@ -13,8 +13,6 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/rancher/norman/httperror"
-	"github.com/rancher/rancher/pkg/ref"
-	"github.com/rancher/rancher/pkg/settings"
 	"github.com/rancher/types/apis/project.cattle.io/v3"
 	"github.com/rancher/webhookinator/pkg/providers/model"
 	"github.com/rancher/webhookinator/pkg/utils"
@@ -62,10 +60,9 @@ func (c *client) CreateHook(receiver *v1.GitWebHookReceiver, accessToken string)
 	if err != nil {
 		return err
 	}
-	hookURL := fmt.Sprintf("%s/%s%s", settings.ServerURL.Get(), utils.HooksEndpointPrefix, ref.Ref(receiver))
 	hook := Hook{
 		Description:          "Webhook created by Rancher Pipeline",
-		URL:                  hookURL,
+		URL:                  utils.GetHookEndpoint(receiver),
 		Active:               true,
 		SkipCertVerification: true,
 		Events: []string{
@@ -159,7 +156,7 @@ func (c *client) getHook(receiver *v1.GitWebHookReceiver, accessToken string) (*
 		return nil, err
 	}
 	for _, hook := range hooks.Values {
-		if strings.HasSuffix(hook.URL, fmt.Sprintf("%s%s", utils.HooksEndpointPrefix, ref.Ref(receiver))) {
+		if strings.HasSuffix(hook.URL, utils.GetHookEndpointSuffix(receiver)) {
 			result = &hook
 			break
 		}
@@ -217,6 +214,7 @@ func doRequestToBitbucket(method string, url string, accessToken string, header 
 		q.Set("access_token", accessToken)
 	}
 	req.URL.RawQuery = q.Encode()
+	req.Header.Add("Content-Type", "application/json")
 	req.Header.Add("Cache-control", "no-cache")
 	for k, v := range header {
 		req.Header.Set(k, v)

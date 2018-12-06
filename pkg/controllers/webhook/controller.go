@@ -11,6 +11,7 @@ import (
 	"github.com/rancher/webhookinator/pkg/utils"
 	"github.com/rancher/webhookinator/types/apis/webhookinator.cattle.io/v1"
 	"github.com/satori/go.uuid"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 )
 
@@ -59,7 +60,7 @@ func (f *webhookReceiverLifecycle) Updated(obj *v1.GitWebHookReceiver) (runtime.
 func (f *webhookReceiverLifecycle) createHook(obj *v1.GitWebHookReceiver) error {
 	credentialID := obj.Spec.RepositoryCredentialSecretName
 	ns, name := ref.Parse(credentialID)
-	credential, err := f.sourceCodeCredentialLister.Get(ns, name)
+	credential, err := f.sourceCodeCredentials.GetNamespaced(ns, name, metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
@@ -82,7 +83,7 @@ func (f *webhookReceiverLifecycle) createHook(obj *v1.GitWebHookReceiver) error 
 func (f *webhookReceiverLifecycle) deleteHook(obj *v1.GitWebHookReceiver) error {
 	credentialID := obj.Spec.RepositoryCredentialSecretName
 	ns, name := ref.Parse(credentialID)
-	credential, err := f.sourceCodeCredentialLister.Get(ns, name)
+	credential, err := f.sourceCodeCredentials.GetNamespaced(ns, name, metav1.GetOptions{})
 	if err != nil {
 		return err
 	}

@@ -2,7 +2,8 @@ package server
 
 import (
 	"context"
-	"github.com/rancher/rancher/server/responsewriter"
+	"github.com/rancher/rancher/pkg/pipeline/providers"
+	"github.com/rancher/webhookinator/pkg/controllers/execution"
 	"net/http"
 
 	"github.com/gorilla/mux"
@@ -15,6 +16,7 @@ import (
 )
 
 func Config(scaledContext *config.ScaledContext) *norman.Config {
+	providers.SetupSourceCodeProviderConfig(scaledContext, scaledContext.Schemas)
 	return &norman.Config{
 		Name: "webhookinator",
 		Schemas: []*types.Schemas{
@@ -34,19 +36,22 @@ func Config(scaledContext *config.ScaledContext) *norman.Config {
 
 		MasterControllers: []norman.ControllerRegister{
 			func(ctx context.Context) error {
-				return webhook.Register(ctx, scaledContext)
+				if err := webhook.Register(ctx, scaledContext); err != nil {
+					return err
+				}
+				return execution.Register(ctx, scaledContext)
 			},
 		},
 	}
 }
 
-func HandleHooks(handler http.Handler, client v1.Interface) http.Handler {
+func HandleHooks(apiHandler http.Handler, client v1.Interface) http.Handler {
 	root := mux.NewRouter()
 	hooksHandler := hooks.New(client)
-	chain := responsewriter.NewMiddlewareChain(responsewriter.Gzip, responsewriter.NoCache, responsewriter.ContentType)
-	root.Handle("/", chain.Handler(handler))
 	root.UseEncodedPath()
-	root.Handle("/", handler)
+	root.Handle("/", apiHandler)
+	root.PathPrefix("/meta").Handler(apiHandler)
+	root.PathPrefix("/v1-webhook").Handler(apiHandler)
 	root.PathPrefix("/hooks").Handler(hooksHandler)
 	return root
 }

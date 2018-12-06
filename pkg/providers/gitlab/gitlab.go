@@ -16,7 +16,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/rancher/norman/httperror"
 	"github.com/rancher/rancher/pkg/ref"
-	"github.com/rancher/rancher/pkg/settings"
 	"github.com/rancher/types/apis/project.cattle.io/v3"
 	"github.com/rancher/webhookinator/pkg/providers/model"
 	"github.com/rancher/webhookinator/pkg/utils"
@@ -32,7 +31,7 @@ const (
 	descRunning       = "This build is running"
 	descPending       = "This build is pending"
 	descSuccess       = "This build is success"
-	descFailure       = "This build is failure"
+	descFailure       = "This build is failed"
 )
 
 type client struct {
@@ -79,7 +78,7 @@ func (c *client) CreateHook(receiver *v1.GitWebHookReceiver, accessToken string)
 		return err
 	}
 	project := url.QueryEscape(user + "/" + repo)
-	hookURL := fmt.Sprintf("%s/%s%s", settings.ServerURL.Get(), utils.HooksEndpointPrefix, ref.Ref(receiver))
+	hookURL := utils.GetHookEndpoint(receiver)
 	opt := &gitlab.AddProjectHookOptions{
 		PushEvents:            gitlab.Bool(true),
 		MergeRequestsEvents:   gitlab.Bool(true),

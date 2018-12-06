@@ -1,8 +1,7 @@
-package webhook
+package execution
 
 import (
 	"context"
-
 	"github.com/rancher/rancher/pkg/pipeline/providers"
 	"github.com/rancher/rancher/pkg/ref"
 	"github.com/rancher/types/apis/project.cattle.io/v3"
@@ -10,6 +9,7 @@ import (
 	remoteproviders "github.com/rancher/webhookinator/pkg/providers"
 	"github.com/rancher/webhookinator/pkg/utils"
 	"github.com/rancher/webhookinator/types/apis/webhookinator.cattle.io/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 )
 
@@ -54,7 +54,7 @@ func (f *webhookExecutionLifecycle) updateStatus(obj *v1.GitWebHookExecution) er
 	}
 	credentialID := receiver.Spec.RepositoryCredentialSecretName
 	ns, name = ref.Parse(credentialID)
-	credential, err := f.sourceCodeCredentialLister.Get(ns, name)
+	credential, err := f.sourceCodeCredentials.GetNamespaced(ns, name, metav1.GetOptions{})
 	if err != nil {
 		return err
 	}

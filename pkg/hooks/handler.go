@@ -36,7 +36,6 @@ func (h *WebhookHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 				responseBody, _ := json.Marshal(e)
 				rw.Write(responseBody)
 			}
-			rw.WriteHeader(http.StatusOK)
 		}
 	}
 

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/rancher/rancher/pkg/ref"
@@ -48,6 +49,10 @@ func (b BitbucketServerDriver) Execute(req *http.Request) (int, error) {
 	if err != nil {
 		return http.StatusInternalServerError, err
 	}
+	if !receiver.Spec.Enabled {
+		return http.StatusUnavailableForLegalReasons, errors.New("webhook receiver is disabled")
+	}
+
 	body, err := ioutil.ReadAll(req.Body)
 	if err != nil {
 		return http.StatusUnprocessableEntity, err
@@ -93,6 +98,7 @@ func parseBitbucketServerPushPayload(raw []byte) (*model.BuildInfo, error) {
 		if strings.HasPrefix(change.RefID, RefsTagPrefix) {
 			//git tag is triggered as a push event
 			info.Event = utils.WebhookEventTag
+			info.Tag = strings.TrimPrefix(change.RefID, RefsTagPrefix)
 			info.Branch = strings.TrimPrefix(change.RefID, RefsTagPrefix)
 			if change.Type != "ADD" {
 				return nil, fmt.Errorf("filter '%s' changes for tag event", change.Type)
@@ -122,6 +128,7 @@ func parseBitbucketServerPullRequestPayload(raw []byte) (*model.BuildInfo, error
 	info.TriggerType = utils.TriggerTypeWebhook
 	info.Event = utils.WebhookEventPullRequest
 	info.Branch = payload.PullRequest.ToRef.DisplayID
+	info.PR = strconv.Itoa(payload.PullRequest.ID)
 	info.Ref = fmt.Sprintf("refs/pull-requests/%d/from", payload.PullRequest.ID)
 	if len(payload.PullRequest.Links.Self) > 0 {
 		info.HTMLLink = payload.PullRequest.Links.Self[0].Href

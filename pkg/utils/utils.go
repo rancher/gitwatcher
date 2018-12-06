@@ -1,10 +1,14 @@
 package utils
 
 import (
+	"fmt"
 	"time"
 
+	"github.com/rancher/rancher/pkg/ref"
+	"github.com/rancher/rancher/pkg/settings"
 	"github.com/rancher/types/apis/project.cattle.io/v3"
 	"github.com/rancher/webhookinator/pkg/providers/model"
+	"github.com/rancher/webhookinator/types/apis/webhookinator.cattle.io/v1"
 )
 
 // EnsureAccessToken Checks expiry and do token refresh when needed
@@ -35,4 +39,15 @@ func EnsureAccessToken(credentialInterface v3.SourceCodeCredentialInterface, pro
 		return torefresh.Spec.AccessToken, nil
 	}
 	return credential.Spec.AccessToken, nil
+}
+
+func GetHookEndpoint(receiver *v1.GitWebHookReceiver) string {
+	serverURL := settings.ServerURL.Get()
+	//FIXME rancher endpoint that proxy to webhookinator
+	serverURL = "http://xxx.ngrok.io"
+	return fmt.Sprintf("%s/%s%s", serverURL, HooksEndpointPrefix, ref.Ref(receiver))
+}
+
+func GetHookEndpointSuffix(receiver *v1.GitWebHookReceiver) string {
+	return fmt.Sprintf("%s=%s", GitWebHookParam, ref.Ref(receiver))
 }

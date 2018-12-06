@@ -6,6 +6,8 @@ type BuildInfo struct {
 	Commit          string `json:"commit,omitempty"`
 	Event           string `json:"event,omitempty"`
 	RepositoryURL   string `json:"repositoryUrl,omitempty"`
+	Tag             string `json:"tag,omitempty"`
+	PR              string `json:"pr,omitempty"`
 	Branch          string `json:"branch,omitempty"`
 	Ref             string `json:"ref,omitempty"`
 	RefSpec         string `json:"refSpec,omitempty"`
