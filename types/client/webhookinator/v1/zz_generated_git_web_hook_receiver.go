@@ -20,28 +20,30 @@ const (
 	GitWebHookReceiverFieldRemoved                        = "removed"
 	GitWebHookReceiverFieldRepositoryCredentialSecretName = "repositoryCredentialSecretName"
 	GitWebHookReceiverFieldRepositoryURL                  = "repositoryUrl"
+	GitWebHookReceiverFieldStatus                         = "status"
 	GitWebHookReceiverFieldTag                            = "tag"
 	GitWebHookReceiverFieldUUID                           = "uuid"
 )
 
 type GitWebHookReceiver struct {
 	types.Resource
-	Annotations                    map[string]string `json:"annotations,omitempty" yaml:"annotations,omitempty"`
-	Created                        string            `json:"created,omitempty" yaml:"created,omitempty"`
-	Enabled                        bool              `json:"enabled,omitempty" yaml:"enabled,omitempty"`
-	ExecutionLabels                map[string]string `json:"executionLabels,omitempty" yaml:"executionLabels,omitempty"`
-	Labels                         map[string]string `json:"labels,omitempty" yaml:"labels,omitempty"`
-	Name                           string            `json:"name,omitempty" yaml:"name,omitempty"`
-	Namespace                      string            `json:"namespace,omitempty" yaml:"namespace,omitempty"`
-	OwnerReferences                []OwnerReference  `json:"ownerReferences,omitempty" yaml:"ownerReferences,omitempty"`
-	PR                             bool              `json:"pr,omitempty" yaml:"pr,omitempty"`
-	Provider                       string            `json:"provider,omitempty" yaml:"provider,omitempty"`
-	Push                           bool              `json:"push,omitempty" yaml:"push,omitempty"`
-	Removed                        string            `json:"removed,omitempty" yaml:"removed,omitempty"`
-	RepositoryCredentialSecretName string            `json:"repositoryCredentialSecretName,omitempty" yaml:"repositoryCredentialSecretName,omitempty"`
-	RepositoryURL                  string            `json:"repositoryUrl,omitempty" yaml:"repositoryUrl,omitempty"`
-	Tag                            bool              `json:"tag,omitempty" yaml:"tag,omitempty"`
-	UUID                           string            `json:"uuid,omitempty" yaml:"uuid,omitempty"`
+	Annotations                    map[string]string         `json:"annotations,omitempty" yaml:"annotations,omitempty"`
+	Created                        string                    `json:"created,omitempty" yaml:"created,omitempty"`
+	Enabled                        bool                      `json:"enabled,omitempty" yaml:"enabled,omitempty"`
+	ExecutionLabels                map[string]string         `json:"executionLabels,omitempty" yaml:"executionLabels,omitempty"`
+	Labels                         map[string]string         `json:"labels,omitempty" yaml:"labels,omitempty"`
+	Name                           string                    `json:"name,omitempty" yaml:"name,omitempty"`
+	Namespace                      string                    `json:"namespace,omitempty" yaml:"namespace,omitempty"`
+	OwnerReferences                []OwnerReference          `json:"ownerReferences,omitempty" yaml:"ownerReferences,omitempty"`
+	PR                             bool                      `json:"pr,omitempty" yaml:"pr,omitempty"`
+	Provider                       string                    `json:"provider,omitempty" yaml:"provider,omitempty"`
+	Push                           bool                      `json:"push,omitempty" yaml:"push,omitempty"`
+	Removed                        string                    `json:"removed,omitempty" yaml:"removed,omitempty"`
+	RepositoryCredentialSecretName string                    `json:"repositoryCredentialSecretName,omitempty" yaml:"repositoryCredentialSecretName,omitempty"`
+	RepositoryURL                  string                    `json:"repositoryUrl,omitempty" yaml:"repositoryUrl,omitempty"`
+	Status                         *GitWebHookReceiverStatus `json:"status,omitempty" yaml:"status,omitempty"`
+	Tag                            bool                      `json:"tag,omitempty" yaml:"tag,omitempty"`
+	UUID                           string                    `json:"uuid,omitempty" yaml:"uuid,omitempty"`
 }
 
 type GitWebHookReceiverCollection struct {

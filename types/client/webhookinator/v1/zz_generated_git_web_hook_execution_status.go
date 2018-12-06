@@ -1,10 +1,14 @@
 package client
 
 const (
-	GitWebHookExecutionStatusType           = "gitWebHookExecutionStatus"
-	GitWebHookExecutionStatusFieldStatusURL = "statusUrl"
+	GitWebHookExecutionStatusType               = "gitWebHookExecutionStatus"
+	GitWebHookExecutionStatusFieldAppliedStatus = "appliedStatus"
+	GitWebHookExecutionStatusFieldConditions    = "conditions"
+	GitWebHookExecutionStatusFieldStatusURL     = "statusUrl"
 )
 
 type GitWebHookExecutionStatus struct {
-	StatusURL string `json:"statusUrl,omitempty" yaml:"statusUrl,omitempty"`
+	AppliedStatus string      `json:"appliedStatus,omitempty" yaml:"appliedStatus,omitempty"`
+	Conditions    []Condition `json:"conditions,omitempty" yaml:"conditions,omitempty"`
+	StatusURL     string      `json:"statusUrl,omitempty" yaml:"statusUrl,omitempty"`
 }

@@ -21,8 +21,9 @@ var (
 )
 
 const (
-	GitWebHookReceiverConditionRegistered condition.Cond = "Registered"
-	GitWebHookExecutionConditionHandled   condition.Cond = "Handled"
+	GitWebHookReceiverConditionRegistered   condition.Cond = "Registered"
+	GitWebHookExecutionConditionInitialized condition.Cond = "Initialized"
+	GitWebHookExecutionConditionHandled     condition.Cond = "Handled"
 )
 
 type GitWebHookReceiver struct {
@@ -73,13 +74,14 @@ type GitWebHookExecutionSpec struct {
 }
 
 type GitWebHookReceiverStatus struct {
-	Token      string
 	Conditions []Condition `json:"conditions,omitempty"`
+	Token      string
 }
 
 type GitWebHookExecutionStatus struct {
-	StatusURL     string `json:"statusUrl,omitempty"`
-	AppliedStatus string `json:"appliedStatus,omitempty"`
+	Conditions    []Condition `json:"conditions,omitempty"`
+	StatusURL     string      `json:"statusUrl,omitempty"`
+	AppliedStatus string      `json:"appliedStatus,omitempty"`
 }
 
 type Condition struct {

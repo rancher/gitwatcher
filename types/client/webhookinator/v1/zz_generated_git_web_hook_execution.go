@@ -7,40 +7,52 @@ import (
 const (
 	GitWebHookExecutionType                        = "gitWebHookExecution"
 	GitWebHookExecutionFieldAnnotations            = "annotations"
+	GitWebHookExecutionFieldAuthor                 = "author"
+	GitWebHookExecutionFieldAuthorAvatar           = "authorAvatar"
+	GitWebHookExecutionFieldAuthorEmail            = "authorEmail"
 	GitWebHookExecutionFieldBranch                 = "branch"
 	GitWebHookExecutionFieldCommit                 = "commit"
 	GitWebHookExecutionFieldCreated                = "created"
 	GitWebHookExecutionFieldGitWebHookReceiverName = "gitWebHookReceiverName"
 	GitWebHookExecutionFieldLabels                 = "labels"
+	GitWebHookExecutionFieldMessage                = "message"
 	GitWebHookExecutionFieldName                   = "name"
 	GitWebHookExecutionFieldNamespace              = "namespace"
 	GitWebHookExecutionFieldOwnerReferences        = "ownerReferences"
 	GitWebHookExecutionFieldPR                     = "pr"
 	GitWebHookExecutionFieldPayload                = "payload"
 	GitWebHookExecutionFieldRemoved                = "removed"
+	GitWebHookExecutionFieldRepositoryURL          = "repositoryUrl"
 	GitWebHookExecutionFieldSourceLink             = "sourceLink"
 	GitWebHookExecutionFieldStatus                 = "status"
 	GitWebHookExecutionFieldTag                    = "tag"
+	GitWebHookExecutionFieldTitle                  = "title"
 	GitWebHookExecutionFieldUUID                   = "uuid"
 )
 
 type GitWebHookExecution struct {
 	types.Resource
 	Annotations            map[string]string          `json:"annotations,omitempty" yaml:"annotations,omitempty"`
+	Author                 string                     `json:"author,omitempty" yaml:"author,omitempty"`
+	AuthorAvatar           string                     `json:"authorAvatar,omitempty" yaml:"authorAvatar,omitempty"`
+	AuthorEmail            string                     `json:"authorEmail,omitempty" yaml:"authorEmail,omitempty"`
 	Branch                 string                     `json:"branch,omitempty" yaml:"branch,omitempty"`
 	Commit                 string                     `json:"commit,omitempty" yaml:"commit,omitempty"`
 	Created                string                     `json:"created,omitempty" yaml:"created,omitempty"`
 	GitWebHookReceiverName string                     `json:"gitWebHookReceiverName,omitempty" yaml:"gitWebHookReceiverName,omitempty"`
 	Labels                 map[string]string          `json:"labels,omitempty" yaml:"labels,omitempty"`
+	Message                string                     `json:"message,omitempty" yaml:"message,omitempty"`
 	Name                   string                     `json:"name,omitempty" yaml:"name,omitempty"`
 	Namespace              string                     `json:"namespace,omitempty" yaml:"namespace,omitempty"`
 	OwnerReferences        []OwnerReference           `json:"ownerReferences,omitempty" yaml:"ownerReferences,omitempty"`
 	PR                     string                     `json:"pr,omitempty" yaml:"pr,omitempty"`
 	Payload                string                     `json:"payload,omitempty" yaml:"payload,omitempty"`
 	Removed                string                     `json:"removed,omitempty" yaml:"removed,omitempty"`
+	RepositoryURL          string                     `json:"repositoryUrl,omitempty" yaml:"repositoryUrl,omitempty"`
 	SourceLink             string                     `json:"sourceLink,omitempty" yaml:"sourceLink,omitempty"`
 	Status                 *GitWebHookExecutionStatus `json:"status,omitempty" yaml:"status,omitempty"`
 	Tag                    string                     `json:"tag,omitempty" yaml:"tag,omitempty"`
+	Title                  string                     `json:"title,omitempty" yaml:"title,omitempty"`
 	UUID                   string                     `json:"uuid,omitempty" yaml:"uuid,omitempty"`
 }
 

@@ -37,6 +37,8 @@ type GitWebHookReceiverList struct {
 
 type GitWebHookReceiverHandlerFunc func(key string, obj *GitWebHookReceiver) (runtime.Object, error)
 
+type GitWebHookReceiverChangeHandlerFunc func(obj *GitWebHookReceiver) (runtime.Object, error)
+
 type GitWebHookReceiverLister interface {
 	List(namespace string, selector labels.Selector) (ret []*GitWebHookReceiver, err error)
 	Get(namespace, name string) (*GitWebHookReceiver, error)
@@ -247,4 +249,179 @@ func (s *gitWebHookReceiverClient) AddClusterScopedHandler(ctx context.Context, 
 func (s *gitWebHookReceiverClient) AddClusterScopedLifecycle(ctx context.Context, name, clusterName string, lifecycle GitWebHookReceiverLifecycle) {
 	sync := NewGitWebHookReceiverLifecycleAdapter(name+"_"+clusterName, true, s, lifecycle)
 	s.Controller().AddClusterScopedHandler(ctx, name, clusterName, sync)
+}
+
+type GitWebHookReceiverIndexer func(obj *GitWebHookReceiver) ([]string, error)
+
+type GitWebHookReceiverClientCache interface {
+	Get(namespace, name string) (*GitWebHookReceiver, error)
+	List(namespace string, selector labels.Selector) ([]*GitWebHookReceiver, error)
+
+	Index(name string, indexer GitWebHookReceiverIndexer)
+	GetIndexed(name, key string) ([]*GitWebHookReceiver, error)
+}
+
+type GitWebHookReceiverClient interface {
+	Create(*GitWebHookReceiver) (*GitWebHookReceiver, error)
+	Get(namespace, name string, opts metav1.GetOptions) (*GitWebHookReceiver, error)
+	Update(*GitWebHookReceiver) (*GitWebHookReceiver, error)
+	Delete(namespace, name string, options *metav1.DeleteOptions) error
+	List(namespace string, opts metav1.ListOptions) (*GitWebHookReceiverList, error)
+	Watch(opts metav1.ListOptions) (watch.Interface, error)
+
+	Cache() GitWebHookReceiverClientCache
+
+	OnCreate(ctx context.Context, name string, sync GitWebHookReceiverChangeHandlerFunc)
+	OnChange(ctx context.Context, name string, sync GitWebHookReceiverChangeHandlerFunc)
+	OnRemove(ctx context.Context, name string, sync GitWebHookReceiverChangeHandlerFunc)
+	Enqueue(namespace, name string)
+
+	Generic() controller.GenericController
+	Interface() GitWebHookReceiverInterface
+}
+
+type gitWebHookReceiverClientCache struct {
+	client *gitWebHookReceiverClient2
+}
+
+type gitWebHookReceiverClient2 struct {
+	iface      GitWebHookReceiverInterface
+	controller GitWebHookReceiverController
+}
+
+func (n *gitWebHookReceiverClient2) Interface() GitWebHookReceiverInterface {
+	return n.iface
+}
+
+func (n *gitWebHookReceiverClient2) Generic() controller.GenericController {
+	return n.iface.Controller().Generic()
+}
+
+func (n *gitWebHookReceiverClient2) Enqueue(namespace, name string) {
+	n.iface.Controller().Enqueue(namespace, name)
+}
+
+func (n *gitWebHookReceiverClient2) Create(obj *GitWebHookReceiver) (*GitWebHookReceiver, error) {
+	return n.iface.Create(obj)
+}
+
+func (n *gitWebHookReceiverClient2) Get(namespace, name string, opts metav1.GetOptions) (*GitWebHookReceiver, error) {
+	return n.iface.GetNamespaced(namespace, name, opts)
+}
+
+func (n *gitWebHookReceiverClient2) Update(obj *GitWebHookReceiver) (*GitWebHookReceiver, error) {
+	return n.iface.Update(obj)
+}
+
+func (n *gitWebHookReceiverClient2) Delete(namespace, name string, options *metav1.DeleteOptions) error {
+	return n.iface.DeleteNamespaced(namespace, name, options)
+}
+
+func (n *gitWebHookReceiverClient2) List(namespace string, opts metav1.ListOptions) (*GitWebHookReceiverList, error) {
+	return n.iface.List(opts)
+}
+
+func (n *gitWebHookReceiverClient2) Watch(opts metav1.ListOptions) (watch.Interface, error) {
+	return n.iface.Watch(opts)
+}
+
+func (n *gitWebHookReceiverClientCache) Get(namespace, name string) (*GitWebHookReceiver, error) {
+	return n.client.controller.Lister().Get(namespace, name)
+}
+
+func (n *gitWebHookReceiverClientCache) List(namespace string, selector labels.Selector) ([]*GitWebHookReceiver, error) {
+	return n.client.controller.Lister().List(namespace, selector)
+}
+
+func (n *gitWebHookReceiverClient2) Cache() GitWebHookReceiverClientCache {
+	n.loadController()
+	return &gitWebHookReceiverClientCache{
+		client: n,
+	}
+}
+
+func (n *gitWebHookReceiverClient2) OnCreate(ctx context.Context, name string, sync GitWebHookReceiverChangeHandlerFunc) {
+	n.loadController()
+	n.iface.AddLifecycle(ctx, name+"-create", &gitWebHookReceiverLifecycleDelegate{create: sync})
+}
+
+func (n *gitWebHookReceiverClient2) OnChange(ctx context.Context, name string, sync GitWebHookReceiverChangeHandlerFunc) {
+	n.loadController()
+	n.iface.AddLifecycle(ctx, name+"-change", &gitWebHookReceiverLifecycleDelegate{update: sync})
+}
+
+func (n *gitWebHookReceiverClient2) OnRemove(ctx context.Context, name string, sync GitWebHookReceiverChangeHandlerFunc) {
+	n.loadController()
+	n.iface.AddLifecycle(ctx, name, &gitWebHookReceiverLifecycleDelegate{remove: sync})
+}
+
+func (n *gitWebHookReceiverClientCache) Index(name string, indexer GitWebHookReceiverIndexer) {
+	err := n.client.controller.Informer().GetIndexer().AddIndexers(map[string]cache.IndexFunc{
+		name: func(obj interface{}) ([]string, error) {
+			if v, ok := obj.(*GitWebHookReceiver); ok {
+				return indexer(v)
+			}
+			return nil, nil
+		},
+	})
+
+	if err != nil {
+		panic(err)
+	}
+}
+
+func (n *gitWebHookReceiverClientCache) GetIndexed(name, key string) ([]*GitWebHookReceiver, error) {
+	var result []*GitWebHookReceiver
+	objs, err := n.client.controller.Informer().GetIndexer().ByIndex(name, key)
+	if err != nil {
+		return nil, err
+	}
+	for _, obj := range objs {
+		if v, ok := obj.(*GitWebHookReceiver); ok {
+			result = append(result, v)
+		}
+	}
+
+	return result, nil
+}
+
+func (n *gitWebHookReceiverClient2) loadController() {
+	if n.controller == nil {
+		n.controller = n.iface.Controller()
+	}
+}
+
+type gitWebHookReceiverLifecycleDelegate struct {
+	create GitWebHookReceiverChangeHandlerFunc
+	update GitWebHookReceiverChangeHandlerFunc
+	remove GitWebHookReceiverChangeHandlerFunc
+}
+
+func (n *gitWebHookReceiverLifecycleDelegate) HasCreate() bool {
+	return n.create != nil
+}
+
+func (n *gitWebHookReceiverLifecycleDelegate) Create(obj *GitWebHookReceiver) (runtime.Object, error) {
+	if n.create == nil {
+		return obj, nil
+	}
+	return n.create(obj)
+}
+
+func (n *gitWebHookReceiverLifecycleDelegate) HasFinalize() bool {
+	return n.remove != nil
+}
+
+func (n *gitWebHookReceiverLifecycleDelegate) Remove(obj *GitWebHookReceiver) (runtime.Object, error) {
+	if n.remove == nil {
+		return obj, nil
+	}
+	return n.remove(obj)
+}
+
+func (n *gitWebHookReceiverLifecycleDelegate) Updated(obj *GitWebHookReceiver) (runtime.Object, error) {
+	if n.update == nil {
+		return obj, nil
+	}
+	return n.update(obj)
 }

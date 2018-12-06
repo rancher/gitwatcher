@@ -15,6 +15,16 @@ type gitWebHookExecutionLifecycleAdapter struct {
 	lifecycle GitWebHookExecutionLifecycle
 }
 
+func (w *gitWebHookExecutionLifecycleAdapter) HasCreate() bool {
+	o, ok := w.lifecycle.(lifecycle.ObjectLifecycleCondition)
+	return !ok || o.HasCreate()
+}
+
+func (w *gitWebHookExecutionLifecycleAdapter) HasFinalize() bool {
+	o, ok := w.lifecycle.(lifecycle.ObjectLifecycleCondition)
+	return !ok || o.HasFinalize()
+}
+
 func (w *gitWebHookExecutionLifecycleAdapter) Create(obj runtime.Object) (runtime.Object, error) {
 	o, err := w.lifecycle.Create(obj.(*GitWebHookExecution))
 	if o == nil {

@@ -15,6 +15,16 @@ type gitWebHookReceiverLifecycleAdapter struct {
 	lifecycle GitWebHookReceiverLifecycle
 }
 
+func (w *gitWebHookReceiverLifecycleAdapter) HasCreate() bool {
+	o, ok := w.lifecycle.(lifecycle.ObjectLifecycleCondition)
+	return !ok || o.HasCreate()
+}
+
+func (w *gitWebHookReceiverLifecycleAdapter) HasFinalize() bool {
+	o, ok := w.lifecycle.(lifecycle.ObjectLifecycleCondition)
+	return !ok || o.HasFinalize()
+}
+
 func (w *gitWebHookReceiverLifecycleAdapter) Create(obj runtime.Object) (runtime.Object, error) {
 	o, err := w.lifecycle.Create(obj.(*GitWebHookReceiver))
 	if o == nil {
