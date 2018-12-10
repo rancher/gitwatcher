@@ -75,7 +75,8 @@ type GitWebHookExecutionSpec struct {
 
 type GitWebHookReceiverStatus struct {
 	Conditions []Condition `json:"conditions,omitempty"`
-	Token      string
+	Token      string      `json:"token,omitempty"`
+	HookID     string      `json:"hookId,omitempty"`
 }
 
 type GitWebHookExecutionStatus struct {
