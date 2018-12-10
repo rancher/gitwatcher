@@ -2,12 +2,13 @@ package webhook
 
 import (
 	"context"
+	"github.com/drone/go-scm/scm"
 
 	"github.com/rancher/rancher/pkg/pipeline/providers"
 	"github.com/rancher/rancher/pkg/ref"
 	"github.com/rancher/types/apis/project.cattle.io/v3"
 	"github.com/rancher/types/config"
-	remoteproviders "github.com/rancher/webhookinator/pkg/providers"
+	"github.com/rancher/webhookinator/pkg/scmclient"
 	"github.com/rancher/webhookinator/pkg/utils"
 	"github.com/rancher/webhookinator/types/apis/webhookinator.cattle.io/v1"
 	"github.com/satori/go.uuid"
@@ -64,20 +65,35 @@ func (f *webhookReceiverLifecycle) createHook(obj *v1.GitWebHookReceiver) error 
 	if err != nil {
 		return err
 	}
-	accessToken := credential.Spec.AccessToken
 	scpConfig, err := providers.GetSourceCodeProviderConfig(obj.Spec.Provider, obj.Namespace)
 	if err != nil {
 		return err
 	}
-	provider, err := remoteproviders.New(scpConfig)
+	client, err := scmclient.NewClientAuth(scpConfig, credential)
 	if err != nil {
 		return err
 	}
-	accessToken, err = utils.EnsureAccessToken(f.sourceCodeCredentials, provider, credential)
+	//accessToken, err = utils.EnsureAccessToken(f.sourceCodeCredentials, provider, credential)
+	//if err != nil {
+	//	return err
+	//}
+	repoName, err := utils.GetRepoNameFromURL(obj.Spec.RepositoryURL)
 	if err != nil {
 		return err
 	}
-	return provider.CreateHook(obj, accessToken)
+	in := &scm.HookInput{
+		Name:   "rancher-webhookinator",
+		Target: utils.GetHookEndpoint(obj),
+		Secret: obj.Status.Token,
+		Events: scm.HookEvents{
+			Push:        true,
+			Tag:         true,
+			PullRequest: true,
+		},
+	}
+	hook, _, err := client.Repositories.CreateHook(context.Background(), repoName, in)
+	obj.Status.HookID = hook.ID
+	return err
 }
 
 func (f *webhookReceiverLifecycle) deleteHook(obj *v1.GitWebHookReceiver) error {
@@ -87,18 +103,25 @@ func (f *webhookReceiverLifecycle) deleteHook(obj *v1.GitWebHookReceiver) error 
 	if err != nil {
 		return err
 	}
-	accessToken := credential.Spec.AccessToken
 	scpConfig, err := providers.GetSourceCodeProviderConfig(obj.Spec.Provider, obj.Namespace)
 	if err != nil {
 		return err
 	}
-	provider, err := remoteproviders.New(scpConfig)
+	client, err := scmclient.NewClientAuth(scpConfig, credential)
 	if err != nil {
 		return err
 	}
-	accessToken, err = utils.EnsureAccessToken(f.sourceCodeCredentials, provider, credential)
+	//accessToken, err = utils.EnsureAccessToken(f.sourceCodeCredentials, provider, credential)
+	//if err != nil {
+	//	return err
+	//}
+	repoName, err := utils.GetRepoNameFromURL(obj.Spec.RepositoryURL)
 	if err != nil {
 		return err
 	}
-	return provider.DeleteHook(obj, accessToken)
+	if obj.Status.HookID == "" {
+		return nil
+	}
+	_, err = client.Repositories.DeleteHook(context.Background(), repoName, obj.Status.HookID)
+	return err
 }
