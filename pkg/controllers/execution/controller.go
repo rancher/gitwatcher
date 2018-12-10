@@ -79,7 +79,7 @@ func (f *webhookExecutionLifecycle) updateStatus(obj *v1.GitWebHookExecution) er
 	if err != nil {
 		return err
 	}
-	client, err := scmclient.NewClientAuth(scpConfig, credential)
+	client, err := scmclient.NewClient(scpConfig, credential)
 	if err != nil {
 		return err
 	}

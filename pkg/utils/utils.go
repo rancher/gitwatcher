@@ -14,6 +14,11 @@ import (
 )
 
 const (
+	GitlabType          = "gitlab"
+	GithubType          = "github"
+	BitbucketCloudType  = "bitbucketcloud"
+	BitbucketServerType = "bitbucketserver"
+
 	bitbucketCloudTokenURL = "https://bitbucket.org/site/oauth2/access_token"
 )
 

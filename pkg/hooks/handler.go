@@ -7,7 +7,6 @@ import (
 	"strconv"
 
 	"github.com/drone/go-scm/scm"
-	"github.com/rancher/rancher/pkg/pipeline/providers"
 	"github.com/rancher/rancher/pkg/ref"
 	"github.com/rancher/webhookinator/pkg/scmclient"
 	"github.com/rancher/webhookinator/pkg/utils"
@@ -57,11 +56,7 @@ func (h *WebhookHandler) execute(req *http.Request) (int, error) {
 	}
 	credentialID := receiver.Spec.RepositoryCredentialSecretName
 	ns, name = ref.Parse(credentialID)
-	scpConfig, err := providers.GetSourceCodeProviderConfig(receiver.Spec.Provider, receiver.Namespace)
-	if err != nil {
-		return http.StatusInternalServerError, err
-	}
-	client, err := scmclient.NewClient(scpConfig)
+	client, err := scmclient.NewClientBase(receiver.Spec.Provider)
 	if err != nil {
 		return http.StatusInternalServerError, err
 	}

@@ -73,7 +73,7 @@ func (f *webhookReceiverLifecycle) createHook(obj *v1.GitWebHookReceiver) error 
 	if err != nil {
 		return err
 	}
-	client, err := scmclient.NewClientAuth(scpConfig, credential)
+	client, err := scmclient.NewClient(scpConfig, credential)
 	if err != nil {
 		return err
 	}
@@ -114,7 +114,7 @@ func (f *webhookReceiverLifecycle) deleteHook(obj *v1.GitWebHookReceiver) error 
 	if err != nil {
 		return err
 	}
-	client, err := scmclient.NewClientAuth(scpConfig, credential)
+	client, err := scmclient.NewClient(scpConfig, credential)
 	if err != nil {
 		return err
 	}

@@ -25,7 +25,7 @@ func newDefaultClient() (*scm.Client, error) {
 	return github.NewDefault(), nil
 }
 
-func newGithubClient(config *v3.GithubPipelineConfig) (*scm.Client, error) {
+func newGithubClient(config *v3.GithubPipelineConfig, credential *v3.SourceCodeCredential) (*scm.Client, error) {
 	url := ""
 	if config.Hostname == "" || config.Hostname == "github.com" {
 		url = defaultGithubAPI
@@ -34,11 +34,7 @@ func newGithubClient(config *v3.GithubPipelineConfig) (*scm.Client, error) {
 	} else {
 		url = "http://" + config.Hostname
 	}
-	return github.New(url)
-}
-
-func newGithubClientAuth(config *v3.GithubPipelineConfig, credential *v3.SourceCodeCredential) (*scm.Client, error) {
-	c, err := newGithubClient(config)
+	c, err := github.New(url)
 	if err != nil {
 		return nil, err
 	}
@@ -50,7 +46,7 @@ func newGithubClientAuth(config *v3.GithubPipelineConfig, credential *v3.SourceC
 	return c, nil
 }
 
-func newGitlabClient(config *v3.GitlabPipelineConfig) (*scm.Client, error) {
+func newGitlabClient(config *v3.GitlabPipelineConfig, credential *v3.SourceCodeCredential) (*scm.Client, error) {
 	url := ""
 	if config.Hostname == "" || config.Hostname == "gitlab.com" {
 		url = defaultGitlabAPI
@@ -59,11 +55,7 @@ func newGitlabClient(config *v3.GitlabPipelineConfig) (*scm.Client, error) {
 	} else {
 		url = "http://" + config.Hostname
 	}
-	return gitlab.New(url)
-}
-
-func newGitlabClientAuth(config *v3.GitlabPipelineConfig, credential *v3.SourceCodeCredential) (*scm.Client, error) {
-	c, err := newGitlabClient(config)
+	c, err := gitlab.New(url)
 	if err != nil {
 		return nil, err
 	}
@@ -75,7 +67,7 @@ func newGitlabClientAuth(config *v3.GitlabPipelineConfig, credential *v3.SourceC
 	return c, nil
 }
 
-func newBitbucketCloudClientAuth(config *v3.BitbucketCloudPipelineConfig, credential *v3.SourceCodeCredential) (*scm.Client, error) {
+func newBitbucketCloudClient(config *v3.BitbucketCloudPipelineConfig, credential *v3.SourceCodeCredential) (*scm.Client, error) {
 	c := bitbucket.NewDefault()
 	ts := oauth2.StaticTokenSource(
 		&oauth2.Token{AccessToken: credential.Spec.AccessToken},
@@ -85,11 +77,7 @@ func newBitbucketCloudClientAuth(config *v3.BitbucketCloudPipelineConfig, creden
 	return c, nil
 }
 
-func newBitbucketCloudClient(config *v3.BitbucketCloudPipelineConfig) (*scm.Client, error) {
-	return bitbucket.NewDefault(), nil
-}
-
-func newBitbucketServerClient(config *v3.BitbucketServerPipelineConfig) (*scm.Client, error) {
+func newBitbucketServerClient(config *v3.BitbucketServerPipelineConfig, credential *v3.SourceCodeCredential) (*scm.Client, error) {
 	url := ""
 	if config.Hostname == "" {
 		return nil, errors.New("bitbucket server host is not configured")
@@ -98,11 +86,7 @@ func newBitbucketServerClient(config *v3.BitbucketServerPipelineConfig) (*scm.Cl
 	} else {
 		url = "http://" + config.Hostname
 	}
-	return stash.New(url)
-}
-
-func newBitbucketServerClientAuth(config *v3.BitbucketServerPipelineConfig, credential *v3.SourceCodeCredential) (*scm.Client, error) {
-	c, err := newBitbucketServerClient(config)
+	c, err := stash.New(url)
 	if err != nil {
 		return nil, err
 	}
@@ -119,6 +103,7 @@ func newBitbucketServerClientAuth(config *v3.BitbucketServerPipelineConfig, cred
 	c.Client = tc
 	return c, nil
 }
+
 func getOauthConsumer(privateKey string, consumerKey string) (*oauth.Consumer, error) {
 	keyBytes := []byte(privateKey)
 	block, _ := pem.Decode(keyBytes)
