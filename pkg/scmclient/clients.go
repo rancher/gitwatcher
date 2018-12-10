@@ -5,6 +5,7 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"errors"
+
 	"github.com/drone/go-scm/scm"
 	"github.com/drone/go-scm/scm/driver/bitbucket"
 	"github.com/drone/go-scm/scm/driver/github"
@@ -26,7 +27,7 @@ func newDefaultClient() (*scm.Client, error) {
 
 func newGithubClient(config *v3.GithubPipelineConfig) (*scm.Client, error) {
 	url := ""
-	if config.Hostname == "" {
+	if config.Hostname == "" || config.Hostname == "github.com" {
 		url = defaultGithubAPI
 	} else if config.TLS {
 		url = "https://" + config.Hostname
@@ -51,7 +52,7 @@ func newGithubClientAuth(config *v3.GithubPipelineConfig, credential *v3.SourceC
 
 func newGitlabClient(config *v3.GitlabPipelineConfig) (*scm.Client, error) {
 	url := ""
-	if config.Hostname == "" {
+	if config.Hostname == "" || config.Hostname == "gitlab.com" {
 		url = defaultGitlabAPI
 	} else if config.TLS {
 		url = "https://" + config.Hostname

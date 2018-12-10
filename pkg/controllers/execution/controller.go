@@ -2,6 +2,7 @@ package execution
 
 import (
 	"context"
+
 	"github.com/drone/go-scm/scm"
 	"github.com/rancher/rancher/pkg/pipeline/providers"
 	"github.com/rancher/rancher/pkg/ref"
@@ -74,17 +75,17 @@ func (f *webhookExecutionLifecycle) updateStatus(obj *v1.GitWebHookExecution) er
 	if err != nil {
 		return err
 	}
+	credential, err = utils.EnsureAccessToken(f.sourceCodeCredentials, scpConfig, credential)
+	if err != nil {
+		return err
+	}
 	client, err := scmclient.NewClientAuth(scpConfig, credential)
 	if err != nil {
 		return err
 	}
-	//accessToken, err = utils.EnsureAccessToken(f.sourceCodeCredentials, provider, credential)
-	//if err != nil {
-	//	return err
-	//}
 	in := &scm.StatusInput{
 		Desc:   conditionStatusMessage[handledStatus],
-		Label:  "continuous-integration/rancher",
+		Label:  utils.StatusContext,
 		State:  conditionStatus[handledStatus],
 		Target: obj.Status.StatusURL,
 	}

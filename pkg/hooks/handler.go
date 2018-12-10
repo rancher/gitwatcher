@@ -3,14 +3,14 @@ package hooks
 import (
 	"errors"
 	"fmt"
+	"net/http"
+	"strconv"
+
 	"github.com/drone/go-scm/scm"
 	"github.com/rancher/rancher/pkg/pipeline/providers"
 	"github.com/rancher/rancher/pkg/ref"
 	"github.com/rancher/webhookinator/pkg/scmclient"
 	"github.com/rancher/webhookinator/pkg/utils"
-	"net/http"
-	"strconv"
-
 	"github.com/rancher/webhookinator/types/apis/webhookinator.cattle.io/v1"
 	"github.com/sirupsen/logrus"
 	"k8s.io/apimachinery/pkg/util/json"
@@ -46,7 +46,6 @@ func (h *WebhookHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 }
 
 func (h *WebhookHandler) execute(req *http.Request) (int, error) {
-
 	receiverID := req.URL.Query().Get(utils.GitWebHookParam)
 	ns, name := ref.Parse(receiverID)
 	receiver, err := h.GitWebHookReceiverLister.Get(ns, name)

@@ -2,8 +2,8 @@ package webhook
 
 import (
 	"context"
-	"github.com/drone/go-scm/scm"
 
+	"github.com/drone/go-scm/scm"
 	"github.com/rancher/rancher/pkg/pipeline/providers"
 	"github.com/rancher/rancher/pkg/ref"
 	"github.com/rancher/types/apis/project.cattle.io/v3"
@@ -69,14 +69,14 @@ func (f *webhookReceiverLifecycle) createHook(obj *v1.GitWebHookReceiver) error 
 	if err != nil {
 		return err
 	}
+	credential, err = utils.EnsureAccessToken(f.sourceCodeCredentials, scpConfig, credential)
+	if err != nil {
+		return err
+	}
 	client, err := scmclient.NewClientAuth(scpConfig, credential)
 	if err != nil {
 		return err
 	}
-	//accessToken, err = utils.EnsureAccessToken(f.sourceCodeCredentials, provider, credential)
-	//if err != nil {
-	//	return err
-	//}
 	repoName, err := utils.GetRepoNameFromURL(obj.Spec.RepositoryURL)
 	if err != nil {
 		return err
@@ -92,8 +92,11 @@ func (f *webhookReceiverLifecycle) createHook(obj *v1.GitWebHookReceiver) error 
 		},
 	}
 	hook, _, err := client.Repositories.CreateHook(context.Background(), repoName, in)
+	if err != nil {
+		return err
+	}
 	obj.Status.HookID = hook.ID
-	return err
+	return nil
 }
 
 func (f *webhookReceiverLifecycle) deleteHook(obj *v1.GitWebHookReceiver) error {
@@ -107,14 +110,14 @@ func (f *webhookReceiverLifecycle) deleteHook(obj *v1.GitWebHookReceiver) error 
 	if err != nil {
 		return err
 	}
+	credential, err = utils.EnsureAccessToken(f.sourceCodeCredentials, scpConfig, credential)
+	if err != nil {
+		return err
+	}
 	client, err := scmclient.NewClientAuth(scpConfig, credential)
 	if err != nil {
 		return err
 	}
-	//accessToken, err = utils.EnsureAccessToken(f.sourceCodeCredentials, provider, credential)
-	//if err != nil {
-	//	return err
-	//}
 	repoName, err := utils.GetRepoNameFromURL(obj.Spec.RepositoryURL)
 	if err != nil {
 		return err

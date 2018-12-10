@@ -2,14 +2,14 @@ package server
 
 import (
 	"context"
-	"github.com/rancher/rancher/pkg/pipeline/providers"
-	"github.com/rancher/webhookinator/pkg/controllers/execution"
 	"net/http"
 
 	"github.com/gorilla/mux"
 	"github.com/rancher/norman"
 	"github.com/rancher/norman/types"
+	"github.com/rancher/rancher/pkg/pipeline/providers"
 	"github.com/rancher/types/config"
+	"github.com/rancher/webhookinator/pkg/controllers/execution"
 	"github.com/rancher/webhookinator/pkg/controllers/webhook"
 	"github.com/rancher/webhookinator/pkg/hooks"
 	"github.com/rancher/webhookinator/types/apis/webhookinator.cattle.io/v1"
