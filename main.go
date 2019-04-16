@@ -5,19 +5,17 @@ package main
 
 import (
 	"context"
-	"github.com/rancher/rancher/pkg/api/controllers/settings"
-	"github.com/rancher/types/config"
-	"github.com/rancher/webhookinator/types/apis/webhookinator.cattle.io/v1"
-	"k8s.io/client-go/tools/clientcmd"
 	"net/http"
 	"os"
 
-	"github.com/rancher/norman"
-	"github.com/rancher/norman/pkg/resolvehome"
-	"github.com/rancher/norman/signal"
-	"github.com/rancher/webhookinator/pkg/server"
+	"github.com/rancher/webhookinator/pkg/hooks"
+	"github.com/rancher/webhookinator/types"
+	"github.com/rancher/wrangler/pkg/leader"
+	"github.com/rancher/wrangler/pkg/signals"
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli"
+	"k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/client-go/tools/clientcmd"
 )
 
 var (
@@ -49,35 +47,25 @@ func main() {
 
 func run(c *cli.Context) error {
 	logrus.Info("Starting controller")
-	ctx := signal.SigTermCancelContext(context.Background())
 
-	kubeConfig, err := resolvehome.Resolve(c.String("kubeconfig"))
-	if err != nil {
-		return err
-	}
+	ctx := signals.SetupSignalHandler(context.Background())
+	kubeconfig := c.String("kubeconfig")
+	namespace := os.Getenv("NAMESPACE")
 
-	cfg, err := clientcmd.BuildConfigFromFlags("", kubeConfig)
+	restConfig, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
 	if err != nil {
 		return err
 	}
-	scaledContext, err := config.NewScaledContext(*cfg)
-	if err != nil {
-		return err
-	}
-	if err := settings.Register(scaledContext); err != nil {
-		return nil
-	}
-	ctx, srv, err := server.Config(scaledContext).Build(ctx, &norman.Options{
-		K8sMode:    "external",
-		KubeConfig: kubeConfig,
+	ctx, rioContext := types.BuildContext(ctx, namespace, restConfig)
+
+	leader.RunOrDie(ctx, namespace, "rio", rioContext.K8s, func(ctx context.Context) {
+		runtime.Must(rioContext.Start(ctx))
+		<-ctx.Done()
 	})
-	if err != nil {
-		return err
-	}
 
 	addr := c.String("listen-address")
 	logrus.Infof("Listening on %s", addr)
-	handler := server.HandleHooks(srv.APIHandler, v1.From(ctx))
+	handler := hooks.HandleHooks(rioContext)
 	go func() {
 		if err := http.ListenAndServe(addr, handler); err != nil {
 			logrus.Fatalf("Failed to listen on %s: %v", addr, err)
