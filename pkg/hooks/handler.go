@@ -29,6 +29,7 @@ const (
 )
 
 type WebhookHandler struct {
+	namespace               string
 	gitWebHookReceiverCache webhookv1controller.GitWebHookReceiverCache
 	gitWebHookExecutions    webhookv1controller.GitWebHookExecutionController
 	secretCache             corev1controller.SecretCache
@@ -36,6 +37,7 @@ type WebhookHandler struct {
 
 func newHandler(rContext *types.Context) *WebhookHandler {
 	webhookHandler := &WebhookHandler{
+		namespace:               rContext.Namespace,
 		gitWebHookReceiverCache: rContext.Webhook.Webhookinator().V1().GitWebHookReceiver().Cache(),
 		gitWebHookExecutions:    rContext.Webhook.Webhookinator().V1().GitWebHookExecution(),
 		secretCache:             rContext.Core.Core().V1().Secret().Cache(),
@@ -75,7 +77,7 @@ func (h *WebhookHandler) execute(req *http.Request) (int, error) {
 		return http.StatusUnavailableForLegalReasons, errors.New("webhook receiver is disabled")
 	}
 	credentialID := receiver.Spec.RepositoryCredentialSecretName
-	secret, err := h.secretCache.Get("rio-cloud", credentialID)
+	secret, err := h.secretCache.Get(receiver.Namespace, credentialID)
 	if err != nil {
 		return http.StatusInternalServerError, err
 	}
@@ -139,8 +141,8 @@ func (h *WebhookHandler) validateAndGenerateExecution(webhook scm.Webhook, recei
 		execution.Spec.SourceLink = parsed.PullRequest.Link
 	}
 	execution.OwnerReferences = append(execution.OwnerReferences, metav1.OwnerReference{
-		APIVersion: receiver.APIVersion,
-		Kind:       receiver.Kind,
+		APIVersion: webhookv1.SchemeGroupVersion.String(),
+		Kind:       "GitWebHookReceiver",
 		Name:       receiver.Name,
 		UID:        receiver.UID,
 	})

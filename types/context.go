@@ -36,6 +36,7 @@ func NewContext(namespace string, config *rest.Config) *Context {
 		Namespace: namespace,
 		Core:      core.NewFactoryFromConfigOrDie(config),
 		Webhook:   webhook.NewFactoryFromConfigOrDie(config),
+		K8s:       kubernetes.NewForConfigOrDie(config),
 	}
 
 	context.Apply = apply.New(context.K8s.Discovery(), apply.NewClientFactory(config))

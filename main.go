@@ -31,7 +31,6 @@ func main() {
 		cli.StringFlag{
 			Name:   "kubeconfig",
 			EnvVar: "KUBECONFIG",
-			Value:  "${HOME}/.kube/config",
 		},
 		cli.StringFlag{
 			Name:  "listen-address",
@@ -58,20 +57,19 @@ func run(c *cli.Context) error {
 	}
 	ctx, rioContext := types.BuildContext(ctx, namespace, restConfig)
 
-	leader.RunOrDie(ctx, namespace, "rio", rioContext.K8s, func(ctx context.Context) {
-		runtime.Must(rioContext.Start(ctx))
-		<-ctx.Done()
-	})
+	go func() {
+		leader.RunOrDie(ctx, namespace, "rio", rioContext.K8s, func(ctx context.Context) {
+			runtime.Must(rioContext.Start(ctx))
+			<-ctx.Done()
+		})
+	}()
 
 	addr := c.String("listen-address")
 	logrus.Infof("Listening on %s", addr)
 	handler := hooks.HandleHooks(rioContext)
-	go func() {
-		if err := http.ListenAndServe(addr, handler); err != nil {
-			logrus.Fatalf("Failed to listen on %s: %v", addr, err)
-			return
-		}
-	}()
+	if err := http.ListenAndServe(addr, handler); err != nil {
+		logrus.Fatalf("Failed to listen on %s: %v", addr, err)
+	}
 	<-ctx.Done()
 	return nil
 }
