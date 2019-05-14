@@ -20,6 +20,7 @@ package scheme
 
 import (
 	autoscalev1 "github.com/rancher/rio/pkg/apis/autoscale.rio.cattle.io/v1"
+	gitv1 "github.com/rancher/rio/pkg/apis/git.rio.cattle.io/v1"
 	projectv1 "github.com/rancher/rio/pkg/apis/project.rio.cattle.io/v1"
 	riov1 "github.com/rancher/rio/pkg/apis/rio.cattle.io/v1"
 	webhookinatorv1 "github.com/rancher/rio/pkg/apis/webhookinator.rio.cattle.io/v1"
@@ -35,9 +36,10 @@ var Codecs = serializer.NewCodecFactory(Scheme)
 var ParameterCodec = runtime.NewParameterCodec(Scheme)
 var localSchemeBuilder = runtime.SchemeBuilder{
 	autoscalev1.AddToScheme,
+	gitv1.AddToScheme,
+	projectv1.AddToScheme,
 	riov1.AddToScheme,
 	webhookinatorv1.AddToScheme,
-	projectv1.AddToScheme,
 }
 
 // AddToScheme adds all types of this clientset into the given scheme. This allows composition
