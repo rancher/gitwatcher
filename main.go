@@ -8,12 +8,14 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/rancher/norman"
-	"github.com/rancher/norman/pkg/resolvehome"
-	"github.com/rancher/norman/signal"
-	"github.com/rancher/webhookinator/pkg/server"
+	"github.com/rancher/webhookinator/pkg/hooks"
+	"github.com/rancher/webhookinator/types"
+	"github.com/rancher/wrangler/pkg/leader"
+	"github.com/rancher/wrangler/pkg/signals"
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli"
+	"k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/client-go/tools/clientcmd"
 )
 
 var (
@@ -29,7 +31,6 @@ func main() {
 		cli.StringFlag{
 			Name:   "kubeconfig",
 			EnvVar: "KUBECONFIG",
-			Value:  "${HOME}/.kube/config",
 		},
 		cli.StringFlag{
 			Name:  "listen-address",
@@ -45,30 +46,30 @@ func main() {
 
 func run(c *cli.Context) error {
 	logrus.Info("Starting controller")
-	ctx := signal.SigTermCancelContext(context.Background())
 
-	kubeConfig, err := resolvehome.Resolve(c.String("kubeconfig"))
+	ctx := signals.SetupSignalHandler(context.Background())
+	kubeconfig := c.String("kubeconfig")
+	namespace := os.Getenv("NAMESPACE")
+
+	restConfig, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
 	if err != nil {
 		return err
 	}
+	ctx, rioContext := types.BuildContext(ctx, namespace, restConfig)
 
-	ctx, srv, err := server.Config().Build(ctx, &norman.Options{
-		K8sMode:    "external",
-		KubeConfig: kubeConfig,
-	})
-	if err != nil {
-		return err
-	}
+	go func() {
+		leader.RunOrDie(ctx, namespace, "rio", rioContext.K8s, func(ctx context.Context) {
+			runtime.Must(rioContext.Start(ctx))
+			<-ctx.Done()
+		})
+	}()
 
 	addr := c.String("listen-address")
 	logrus.Infof("Listening on %s", addr)
-
-	go func() {
-		if err := http.ListenAndServe(addr, srv.APIHandler); err != nil {
-			logrus.Fatalf("Failed to listen on %s: %v", addr, err)
-			return
-		}
-	}()
+	handler := hooks.HandleHooks(rioContext)
+	if err := http.ListenAndServe(addr, handler); err != nil {
+		logrus.Fatalf("Failed to listen on %s: %v", addr, err)
+	}
 	<-ctx.Done()
 	return nil
 }
