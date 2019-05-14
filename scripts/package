@@ -4,10 +4,9 @@ set -e
 source $(dirname $0)/version
 
 ARCH=${ARCH:-"amd64"}
-SUFFIX=""
-[ "${ARCH}" != "amd64" ] && SUFFIX="_${ARCH}"
+SUFFIX="-${ARCH}"
 
-cd $(dirname $0)/../package
+cd $(dirname $0)/..
 
 TAG=${TAG:-${VERSION}${SUFFIX}}
 REPO=${REPO:-rancher}
@@ -16,9 +15,14 @@ if echo $TAG | grep -q dirty; then
     TAG=dev
 fi
 
-cp ../bin/webhookinator .
+mkdir -p dist/artifacts
+cp bin/webhookinator dist/artifacts/webhookinator${SUFFIX}
 
 IMAGE=${REPO}/webhookinator:${TAG}
-docker build -t ${IMAGE} .
-echo ${IMAGE} > ../dist/images
+DOCKERFILE=package/Dockerfile
+if [ -e ${DOCKERFILE}.${ARCH} ]; then
+    DOCKERFILE=${DOCKERFILE}.${ARCH}
+fi
+
+docker build -f ${DOCKERFILE} -t ${IMAGE} .
 echo Built ${IMAGE}
