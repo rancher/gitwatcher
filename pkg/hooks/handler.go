@@ -25,7 +25,7 @@ import (
 )
 
 const (
-	githubUrl = "https://api.github.com"
+	githubURL = "https://api.github.com"
 )
 
 type WebhookHandler struct {
@@ -164,7 +164,7 @@ func initExecution(receiver *webhookv1.GitWebHookReceiver) *webhookv1.GitWebHook
 }
 
 func newGithubClient(token string) (*scm.Client, error) {
-	c, err := github.New(githubUrl)
+	c, err := github.New(githubURL)
 	if err != nil {
 		return nil, err
 	}

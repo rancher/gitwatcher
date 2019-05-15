@@ -119,6 +119,11 @@ func (in *ClusterDomainSpec) DeepCopyInto(out *ClusterDomainSpec) {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
 	}
+	if in.Conditions != nil {
+		in, out := &in.Conditions, &out.Conditions
+		*out = make([]genericcondition.GenericCondition, len(*in))
+		copy(*out, *in)
+	}
 	return
 }
 

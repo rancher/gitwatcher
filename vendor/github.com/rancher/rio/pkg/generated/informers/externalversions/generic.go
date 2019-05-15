@@ -22,6 +22,7 @@ import (
 	"fmt"
 
 	v1 "github.com/rancher/rio/pkg/apis/autoscale.rio.cattle.io/v1"
+	gitriocattleiov1 "github.com/rancher/rio/pkg/apis/git.rio.cattle.io/v1"
 	projectriocattleiov1 "github.com/rancher/rio/pkg/apis/project.rio.cattle.io/v1"
 	riocattleiov1 "github.com/rancher/rio/pkg/apis/rio.cattle.io/v1"
 	webhookinatorriocattleiov1 "github.com/rancher/rio/pkg/apis/webhookinator.rio.cattle.io/v1"
@@ -59,6 +60,10 @@ func (f *sharedInformerFactory) ForResource(resource schema.GroupVersionResource
 	case v1.SchemeGroupVersion.WithResource("servicescalerecommendations"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Autoscale().V1().ServiceScaleRecommendations().Informer()}, nil
 
+		// Group=git.rio.cattle.io, Version=v1
+	case gitriocattleiov1.SchemeGroupVersion.WithResource("gitmodules"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Git().V1().GitModules().Informer()}, nil
+
 		// Group=project.rio.cattle.io, Version=v1
 	case projectriocattleiov1.SchemeGroupVersion.WithResource("clusterdomains"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Project().V1().ClusterDomains().Informer()}, nil
@@ -66,6 +71,8 @@ func (f *sharedInformerFactory) ForResource(resource schema.GroupVersionResource
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Project().V1().Features().Informer()}, nil
 
 		// Group=rio.cattle.io, Version=v1
+	case riocattleiov1.SchemeGroupVersion.WithResource("apps"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Rio().V1().Apps().Informer()}, nil
 	case riocattleiov1.SchemeGroupVersion.WithResource("externalservices"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Rio().V1().ExternalServices().Informer()}, nil
 	case riocattleiov1.SchemeGroupVersion.WithResource("publicdomains"):
