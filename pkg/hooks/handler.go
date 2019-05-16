@@ -1,8 +1,6 @@
 package hooks
 
 import (
-	"context"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"net/http"
@@ -10,39 +8,31 @@ import (
 	"strings"
 
 	"github.com/drone/go-scm/scm"
-	"github.com/drone/go-scm/scm/driver/github"
 	"github.com/gorilla/mux"
-	"github.com/rancher/rancher/pkg/ref"
-	webhookv1 "github.com/rancher/rio/pkg/apis/webhookinator.rio.cattle.io/v1"
-	corev1controller "github.com/rancher/rio/pkg/generated/controllers/core/v1"
-	webhookv1controller "github.com/rancher/rio/pkg/generated/controllers/webhookinator.rio.cattle.io/v1"
-	"github.com/rancher/webhookinator/pkg/utils"
-	"github.com/rancher/webhookinator/types"
+	webhookv1 "github.com/rancher/gitwatcher/pkg/apis/gitwatcher.cattle.io/v1"
+	webhookv1controller "github.com/rancher/gitwatcher/pkg/generated/controllers/gitwatcher.cattle.io/v1"
+	"github.com/rancher/gitwatcher/pkg/provider"
+	"github.com/rancher/gitwatcher/pkg/provider/github"
+	"github.com/rancher/gitwatcher/pkg/types"
 	"github.com/sirupsen/logrus"
-	"golang.org/x/oauth2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/json"
 )
 
-const (
-	githubURL = "https://api.github.com"
-)
-
 type WebhookHandler struct {
-	namespace               string
-	gitWebHookReceiverCache webhookv1controller.GitWebHookReceiverCache
-	gitWebHookExecutions    webhookv1controller.GitWebHookExecutionController
-	secretCache             corev1controller.SecretCache
+	gitWatcherCache webhookv1controller.GitWatcherCache
+	gitCommit       webhookv1controller.GitCommitClient
+	providers       []provider.Provider
 }
 
 func newHandler(rContext *types.Context) *WebhookHandler {
-	webhookHandler := &WebhookHandler{
-		namespace:               rContext.Namespace,
-		gitWebHookReceiverCache: rContext.Webhook.Webhookinator().V1().GitWebHookReceiver().Cache(),
-		gitWebHookExecutions:    rContext.Webhook.Webhookinator().V1().GitWebHookExecution(),
-		secretCache:             rContext.Core.Core().V1().Secret().Cache(),
+	secretCache := rContext.Core.Core().V1().Secret().Cache()
+	wh := &WebhookHandler{
+		gitWatcherCache: rContext.Webhook.Gitwatcher().V1().GitWatcher().Cache(),
+		gitCommit:       rContext.Webhook.Gitwatcher().V1().GitCommit(),
 	}
-	return webhookHandler
+	wh.providers = append(wh.providers, github.NewGitHub(secretCache, rContext.Apply))
+	return wh
 }
 
 func (h *WebhookHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
@@ -67,36 +57,20 @@ func (h *WebhookHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 }
 
 func (h *WebhookHandler) execute(req *http.Request) (int, error) {
-	receiverID := req.URL.Query().Get(utils.GitWebHookParam)
-	ns, name := ref.Parse(receiverID)
-	receiver, err := h.gitWebHookReceiverCache.Get(ns, name)
-	if err != nil {
-		return http.StatusInternalServerError, err
+	for _, provider := range h.providers {
+		receiver, webhook, ok, code, err := provider.HandleHook(h.gitWatcherCache, req)
+		if err != nil {
+			return code, err
+		}
+
+		if ok {
+			return h.validateAndGenerateExecution(webhook, receiver)
+		}
 	}
-	if !receiver.Spec.Enabled {
-		return http.StatusUnavailableForLegalReasons, errors.New("webhook receiver is disabled")
-	}
-	credentialID := receiver.Spec.RepositoryCredentialSecretName
-	secret, err := h.secretCache.Get(receiver.Namespace, credentialID)
-	if err != nil {
-		return http.StatusInternalServerError, err
-	}
-	token := base64.StdEncoding.EncodeToString(secret.Data["accessToken"])
-	client, err := newGithubClient(token)
-	if err != nil {
-		return http.StatusInternalServerError, err
-	}
-	f := func(webhook scm.Webhook) (string, error) {
-		return receiver.Status.Token, nil
-	}
-	webhook, err := client.Webhooks.Parse(req, f)
-	if err != nil {
-		return http.StatusBadRequest, err
-	}
-	return h.validateAndGenerateExecution(webhook, receiver)
+	return http.StatusNotFound, fmt.Errorf("unknown provider")
 }
 
-func (h *WebhookHandler) validateAndGenerateExecution(webhook scm.Webhook, receiver *webhookv1.GitWebHookReceiver) (int, error) {
+func (h *WebhookHandler) validateAndGenerateExecution(webhook scm.Webhook, receiver *webhookv1.GitWatcher) (int, error) {
 	execution := initExecution(receiver)
 	switch parsed := webhook.(type) {
 	case *scm.PushHook:
@@ -142,38 +116,25 @@ func (h *WebhookHandler) validateAndGenerateExecution(webhook scm.Webhook, recei
 	}
 	execution.OwnerReferences = append(execution.OwnerReferences, metav1.OwnerReference{
 		APIVersion: webhookv1.SchemeGroupVersion.String(),
-		Kind:       "GitWebHookReceiver",
+		Kind:       "GitWatcher",
 		Name:       receiver.Name,
 		UID:        receiver.UID,
 	})
-	_, err := h.gitWebHookExecutions.Create(execution)
+	_, err := h.gitCommit.Create(execution)
 	if err != nil {
 		return http.StatusInternalServerError, err
 	}
 	return http.StatusOK, nil
 }
 
-func initExecution(receiver *webhookv1.GitWebHookReceiver) *webhookv1.GitWebHookExecution {
-	execution := &webhookv1.GitWebHookExecution{}
+func initExecution(receiver *webhookv1.GitWatcher) *webhookv1.GitCommit {
+	execution := &webhookv1.GitCommit{}
 	execution.GenerateName = receiver.Name + "-"
 	execution.Namespace = receiver.Namespace
-	execution.Spec.GitWebHookReceiverName = ref.Ref(receiver)
+	execution.Spec.GitWebHookReceiverName = receiver.Name
 	execution.Labels = receiver.Spec.ExecutionLabels
 	execution.Spec.RepositoryURL = receiver.Spec.RepositoryURL
 	return execution
-}
-
-func newGithubClient(token string) (*scm.Client, error) {
-	c, err := github.New(githubURL)
-	if err != nil {
-		return nil, err
-	}
-	ts := oauth2.StaticTokenSource(
-		&oauth2.Token{AccessToken: token},
-	)
-	tc := oauth2.NewClient(context.Background(), ts)
-	c.Client = tc
-	return c, nil
 }
 
 func HandleHooks(ctx *types.Context) http.Handler {

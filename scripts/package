@@ -16,9 +16,9 @@ if echo $TAG | grep -q dirty; then
 fi
 
 mkdir -p dist/artifacts
-cp bin/webhookinator dist/artifacts/webhookinator${SUFFIX}
+cp bin/gitwatcher dist/artifacts/gitwatcher${SUFFIX}
 
-IMAGE=${REPO}/webhookinator:${TAG}
+IMAGE=${REPO}/gitwatcher:${TAG}
 DOCKERFILE=package/Dockerfile
 if [ -e ${DOCKERFILE}.${ARCH} ]; then
     DOCKERFILE=${DOCKERFILE}.${ARCH}

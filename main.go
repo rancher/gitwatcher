@@ -1,15 +1,18 @@
-//go:generate go run types/codegen/cleanup/main.go
-//go:generate go run types/codegen/main.go
+//go:generate go run pkg/codegen/cleanup/main.go
+//go:generate /bin/rm -rf pkg/generated
+//go:generate go run pkg/codegen/main.go
 
 package main
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"os"
 
-	"github.com/rancher/webhookinator/pkg/hooks"
-	"github.com/rancher/webhookinator/types"
+	"github.com/rancher/gitwatcher/pkg/types"
+
+	"github.com/rancher/gitwatcher/pkg/hooks"
 	"github.com/rancher/wrangler/pkg/leader"
 	"github.com/rancher/wrangler/pkg/signals"
 	"github.com/sirupsen/logrus"
@@ -19,14 +22,14 @@ import (
 )
 
 var (
-	VERSION = "v0.0.0-dev"
+	Version   = "v0.0.0-dev"
+	GitCommit = "HEAD"
 )
 
 func main() {
 	app := cli.NewApp()
-	app.Name = "webhookinator"
-	app.Version = VERSION
-	app.Usage = "webhookinator needs help!"
+	app.Name = "gitwatcher"
+	app.Version = fmt.Sprintf("%s (%s)", Version, GitCommit)
 	app.Flags = []cli.Flag{
 		cli.StringFlag{
 			Name:   "kubeconfig",

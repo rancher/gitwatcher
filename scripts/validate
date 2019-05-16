@@ -21,4 +21,4 @@ echo Running: go fmt
 test -z "$(go fmt ${PACKAGES} | tee /dev/stderr)"
 
 echo Running: go mod verify
-go mod verify
+GOPATH="" go mod verify

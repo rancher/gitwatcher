@@ -1,18 +1,18 @@
-webhookinator
+gitwatcher
 ========
 
 ## Sample
 
-Note: scm configuration & git repository secrets management are beyond webhookinator's scope.
+Note: scm configuration & git repository secrets management are beyond gitwatcher's scope.
 
 Assume that githubconfig is set in proj-abc namespace and a git credential is store in user-def namespace(by configuring github in pipeline project settings)
 
-Assume that rancher server will have a hook endpoint that proxy to webhookinator(for testing change [here](https://github.com/gitlawr/webhookinator/blob/prototype/pkg/utils/utils.go#L47))
+Assume that rancher server will have a hook endpoint that proxy to gitwatcher(for testing change [here](https://github.com/gitlawr/gitwatcher/blob/prototype/pkg/utils/utils.go#L47))
 
 1. Create a gitWebHookReceiver:
 ```
-- apiVersion: webhookinator.cattle.io/v1
-  kind: GitWebHookReceiver
+- apiVersion: gitwatcher.cattle.io/v1
+  kind: GitWatcher
   metadata:
     name: test
     namespace: proj-abc
@@ -27,10 +27,10 @@ Assume that rancher server will have a hook endpoint that proxy to webhookinator
 ```
 gitWebHookReceiver controller will register a webhook in the repo.
 
-2. Create a PR, an execution will be created by webhookinator
+2. Create a PR, an execution will be created by gitwatcher
 ```
-- apiVersion: webhookinator.cattle.io/v1
-  kind: GitWebHookExecution
+- apiVersion: gitwatcher.cattle.io/v1
+  kind: GitCommit
   metadata:
     generateName: test-
     name: test-n4fhv
@@ -51,8 +51,8 @@ gitWebHookReceiver controller will register a webhook in the repo.
 
 3. An external execution controller handle this execution, setting `Handled` condition & `statusUrl`
 ```
-apiVersion: webhookinator.cattle.io/v1
-kind: GitWebHookExecution
+apiVersion: gitwatcher.cattle.io/v1
+kind: GitCommit
 metadata:
   generateName: test-
   name: test-n4fhv
@@ -69,10 +69,10 @@ status:
   statusUrl: http://myexample.com
 ```
 
-4. Webhookinator will update build status on github according to `Handled` condition
+4. gitwatcher will update build status on github according to `Handled` condition
 ```
-apiVersion: webhookinator.cattle.io/v1
-kind: GitWebHookExecution
+apiVersion: gitwatcher.cattle.io/v1
+kind: GitCommit
 metadata:
   generateName: test-
   name: test-n4fhv
@@ -97,7 +97,7 @@ status:
 
 ## Running
 
-`./bin/webhookinator`
+`./bin/gitwatcher`
 
 ## License
 Copyright (c) 2018 [Rancher Labs, Inc.](http://rancher.com)
