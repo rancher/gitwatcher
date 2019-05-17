@@ -88,8 +88,8 @@ func ApplyCommit(obj *webhookv1.GitWatcher, commit string, apply apply.Apply) er
 			OwnerReferences: []metav1.OwnerReference{
 				{
 					Name:       obj.Name,
-					Kind:       obj.Kind,
-					APIVersion: obj.APIVersion,
+					Kind:       "GitWatcher",
+					APIVersion: "gitwatcher.cattle.io/v1",
 					Controller: &T,
 					UID:        obj.UID,
 				},
