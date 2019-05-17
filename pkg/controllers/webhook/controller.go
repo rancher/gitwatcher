@@ -4,16 +4,16 @@ import (
 	"context"
 	"time"
 
-	"github.com/rancher/gitwatcher/pkg/provider"
-	"github.com/rancher/gitwatcher/pkg/provider/github"
-	"github.com/rancher/gitwatcher/pkg/provider/polling"
-
 	webhookv1 "github.com/rancher/gitwatcher/pkg/apis/gitwatcher.cattle.io/v1"
 	webhookcontrollerv1 "github.com/rancher/gitwatcher/pkg/generated/controllers/gitwatcher.cattle.io/v1"
 	webhookv1controller "github.com/rancher/gitwatcher/pkg/generated/controllers/gitwatcher.cattle.io/v1"
+	"github.com/rancher/gitwatcher/pkg/provider"
+	"github.com/rancher/gitwatcher/pkg/provider/github"
+	"github.com/rancher/gitwatcher/pkg/provider/polling"
 	"github.com/rancher/gitwatcher/pkg/types"
 	"github.com/rancher/wrangler/pkg/ticker"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/runtime"
 )
 
 const (
@@ -56,7 +56,9 @@ func (w *webhookHandler) onChange(key string, obj *webhookv1.GitWatcher) (*webho
 
 	for _, provider := range w.providers {
 		if provider.Supports(obj) {
-			return provider.Create(w.ctx, obj)
+			return obj, webhookv1.GitWebHookReceiverConditionRegistered.DoUntilTrue(obj, func() (object runtime.Object, e error) {
+				return provider.Create(w.ctx, obj)
+			})
 		}
 	}
 
