@@ -9,6 +9,8 @@ import (
 	"os"
 	"strings"
 
+	errors2 "k8s.io/apimachinery/pkg/api/errors"
+
 	"github.com/drone/go-scm/scm"
 	"github.com/drone/go-scm/scm/driver/github"
 	"github.com/google/uuid"
@@ -40,11 +42,16 @@ func NewGitHub(secrets v12.SecretCache, apply apply.Apply) *GitHub {
 		SCM: scmprovider.SCM{
 			SecretsCache: secrets,
 		},
-		apply: apply,
+		apply: apply.WithStrictCaching(),
 	}
 }
 
 func (w *GitHub) Supports(obj *webhookv1.GitWatcher) bool {
+	_, err := w.GetSecret(secretName, obj)
+	if errors2.IsNotFound(err) {
+		return false
+	}
+
 	if strings.EqualFold(obj.Spec.Provider, "github") {
 		return true
 	}

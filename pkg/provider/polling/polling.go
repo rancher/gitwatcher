@@ -35,7 +35,7 @@ func NewPolling(secrets v12.SecretCache, apply apply.Apply) *Polling {
 		SCM: scmprovider.SCM{
 			SecretsCache: secrets,
 		},
-		apply: apply,
+		apply: apply.WithStrictCaching(),
 	}
 }
 

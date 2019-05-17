@@ -10,9 +10,9 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/rancher/gitwatcher/pkg/types"
-
+	"github.com/rancher/gitwatcher/pkg/controllers/webhook"
 	"github.com/rancher/gitwatcher/pkg/hooks"
+	"github.com/rancher/gitwatcher/pkg/types"
 	"github.com/rancher/wrangler/pkg/leader"
 	"github.com/rancher/wrangler/pkg/signals"
 	"github.com/sirupsen/logrus"
@@ -62,6 +62,9 @@ func run(c *cli.Context) error {
 
 	go func() {
 		leader.RunOrDie(ctx, namespace, "rio", rioContext.K8s, func(ctx context.Context) {
+			if err := webhook.Register(ctx, rioContext); err != nil {
+				panic(err)
+			}
 			runtime.Must(rioContext.Start(ctx))
 			<-ctx.Done()
 		})

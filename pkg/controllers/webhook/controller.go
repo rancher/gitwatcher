@@ -26,10 +26,14 @@ func Register(ctx context.Context, rContext *types.Context) error {
 	wh := webhookHandler{
 		ctx:             ctx,
 		gitWatcherCache: rContext.Webhook.Gitwatcher().V1().GitWatcher().Cache(),
+		gitWatcher:      rContext.Webhook.Gitwatcher().V1().GitWatcher(),
 	}
 
-	wh.providers = append(wh.providers, github.NewGitHub(secretsLister, rContext.Apply))
-	wh.providers = append(wh.providers, polling.NewPolling(secretsLister, rContext.Apply))
+	apply := rContext.Apply.WithCacheTypes(
+		rContext.Webhook.Gitwatcher().V1().GitWatcher(),
+		rContext.Webhook.Gitwatcher().V1().GitCommit())
+	wh.providers = append(wh.providers, github.NewGitHub(secretsLister, apply))
+	wh.providers = append(wh.providers, polling.NewPolling(secretsLister, apply))
 
 	rContext.Webhook.Gitwatcher().V1().GitWatcher().OnChange(ctx, "webhook-receiver",
 		webhookv1controller.UpdateGitWatcherOnChange(rContext.Webhook.Gitwatcher().V1().GitWatcher().Updater(), wh.onChange))
@@ -52,7 +56,7 @@ func (w *webhookHandler) onChange(key string, obj *webhookv1.GitWatcher) (*webho
 
 	for _, provider := range w.providers {
 		if provider.Supports(obj) {
-			provider.Create(w.ctx, obj)
+			return provider.Create(w.ctx, obj)
 		}
 	}
 
