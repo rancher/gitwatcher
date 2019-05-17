@@ -96,10 +96,10 @@ func ApplyCommit(obj *webhookv1.GitWatcher, commit string, apply apply.Apply) er
 			},
 		},
 		Spec: webhookv1.GitCommitSpec{
-			Branch:                 obj.Spec.Branch,
-			RepositoryURL:          obj.Spec.RepositoryURL,
-			Commit:                 commit,
-			GitWebHookReceiverName: obj.Name,
+			Branch:         obj.Spec.Branch,
+			RepositoryURL:  obj.Spec.RepositoryURL,
+			Commit:         commit,
+			GitWatcherName: obj.Name,
 		},
 	})
 	os := objectset.NewObjectSet()

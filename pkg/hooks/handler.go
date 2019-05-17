@@ -131,7 +131,7 @@ func initExecution(receiver *webhookv1.GitWatcher) *webhookv1.GitCommit {
 	execution := &webhookv1.GitCommit{}
 	execution.GenerateName = receiver.Name + "-"
 	execution.Namespace = receiver.Namespace
-	execution.Spec.GitWebHookReceiverName = receiver.Name
+	execution.Spec.GitWatcherName = receiver.Name
 	execution.Labels = receiver.Spec.ExecutionLabels
 	execution.Spec.RepositoryURL = receiver.Spec.RepositoryURL
 	return execution
