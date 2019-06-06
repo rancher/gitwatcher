@@ -8,9 +8,10 @@ require (
 	github.com/drone/go-scm v1.4.0
 	github.com/google/uuid v1.1.1
 	github.com/gorilla/mux v1.7.1
+	github.com/nbio/st v0.0.0-20140626010706-e9e8d9816f32 // indirect
 	github.com/pkg/errors v0.8.1
-	github.com/rancher/wrangler v0.1.0
-	github.com/rancher/wrangler-api v0.1.1
+	github.com/rancher/wrangler v0.1.3
+	github.com/rancher/wrangler-api v0.1.3
 	github.com/sirupsen/logrus v1.4.1
 	github.com/spf13/pflag v1.0.3 // indirect
 	github.com/urfave/cli v1.20.0
