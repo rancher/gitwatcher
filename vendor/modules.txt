@@ -43,7 +43,7 @@ github.com/modern-go/concurrent
 github.com/modern-go/reflect2
 # github.com/pkg/errors v0.8.1
 github.com/pkg/errors
-# github.com/rancher/wrangler v0.0.0-20190516181950-a7cf48fa83ef
+# github.com/rancher/wrangler v0.1.4
 github.com/rancher/wrangler/pkg/leader
 github.com/rancher/wrangler/pkg/signals
 github.com/rancher/wrangler/pkg/condition
@@ -52,6 +52,7 @@ github.com/rancher/wrangler/pkg/controller-gen/args
 github.com/rancher/wrangler/pkg/cleanup
 github.com/rancher/wrangler/pkg/ticker
 github.com/rancher/wrangler/pkg/generic
+github.com/rancher/wrangler/pkg/schemes
 github.com/rancher/wrangler/pkg/apply
 github.com/rancher/wrangler/pkg/kv
 github.com/rancher/wrangler/pkg/name
@@ -59,8 +60,9 @@ github.com/rancher/wrangler/pkg/objectset
 github.com/rancher/wrangler/pkg/start
 github.com/rancher/wrangler/pkg/controller-gen/generators
 github.com/rancher/wrangler/pkg/apply/injectors
+github.com/rancher/wrangler/pkg/gvk
 github.com/rancher/wrangler/pkg/merr
-# github.com/rancher/wrangler-api v0.0.0-20190516182105-c5ea888bdf54
+# github.com/rancher/wrangler-api v0.1.4
 github.com/rancher/wrangler-api/pkg/generated/controllers/core/v1
 github.com/rancher/wrangler-api/pkg/generated/controllers/core
 # github.com/sirupsen/logrus v1.4.1
@@ -69,9 +71,9 @@ github.com/sirupsen/logrus
 github.com/spf13/pflag
 # github.com/urfave/cli v1.20.0
 github.com/urfave/cli
-# golang.org/x/crypto v0.0.0-20190513172903-22d7a77e9e5f
+# golang.org/x/crypto v0.0.0-20190308221718-c2843e01d9a2
 golang.org/x/crypto/ssh/terminal
-# golang.org/x/net v0.0.0-20190404232315-eb5bcb51f2a3
+# golang.org/x/net v0.0.0-20190311183353-d8887717615a
 golang.org/x/net/http2
 golang.org/x/net/http/httpguts
 golang.org/x/net/http2/hpack
@@ -83,7 +85,7 @@ golang.org/x/oauth2
 golang.org/x/oauth2/internal
 # golang.org/x/sync v0.0.0-20190423024810-112230192c58
 golang.org/x/sync/errgroup
-# golang.org/x/sys v0.0.0-20190412213103-97732733099d
+# golang.org/x/sys v0.0.0-20190215142949-d0b11bdaac8a
 golang.org/x/sys/unix
 golang.org/x/sys/windows
 # golang.org/x/text v0.3.0
@@ -350,7 +352,7 @@ k8s.io/client-go/listers/settings/v1alpha1
 k8s.io/client-go/listers/storage/v1
 k8s.io/client-go/listers/storage/v1alpha1
 k8s.io/client-go/listers/storage/v1beta1
-# k8s.io/code-generator v0.0.0-20190419212335-ff26e7842f9d
+# k8s.io/code-generator v0.0.0-20190311093542-50b561225d70
 k8s.io/code-generator/cmd/client-gen/args
 k8s.io/code-generator/cmd/client-gen/generators
 k8s.io/code-generator/cmd/client-gen/types
