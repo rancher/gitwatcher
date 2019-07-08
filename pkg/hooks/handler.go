@@ -103,7 +103,7 @@ func (h *WebhookHandler) validateAndGenerateExecution(webhook scm.Webhook, recei
 		if !receiver.Spec.PR {
 			return http.StatusUnavailableForLegalReasons, errors.New("pull request event is deactivated")
 		}
-		if parsed.Action != scm.ActionOpen && parsed.Action != scm.ActionSync {
+		if parsed.Action != scm.ActionOpen && parsed.Action != scm.ActionSync && parsed.Action != scm.ActionClose && parsed.Action != scm.ActionReopen {
 			return http.StatusUnavailableForLegalReasons, errors.New("action ommitted")
 		}
 		execution.Spec.Author = parsed.Sender.Login
@@ -113,6 +113,9 @@ func (h *WebhookHandler) validateAndGenerateExecution(webhook scm.Webhook, recei
 		execution.Spec.Title = parsed.PullRequest.Title
 		execution.Spec.Message = parsed.PullRequest.Body
 		execution.Spec.SourceLink = parsed.PullRequest.Link
+		execution.Spec.RepositoryURL = parsed.Repo.Clone
+		execution.Spec.Commit = parsed.PullRequest.Sha
+		execution.Spec.Merged = parsed.PullRequest.Merged
 	}
 	execution.OwnerReferences = append(execution.OwnerReferences, metav1.OwnerReference{
 		APIVersion: webhookv1.SchemeGroupVersion.String(),
