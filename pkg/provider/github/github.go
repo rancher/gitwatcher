@@ -121,8 +121,9 @@ func (w *GitHub) createHook(obj *webhookv1.GitWatcher, scmClient *scm.Client) (*
 		Target: getHookEndpoint(obj, obj.Spec.ReceiverURL),
 		Secret: obj.Status.Token,
 		Events: scm.HookEvents{
-			Push: true,
-			Tag:  true,
+			Push:        true,
+			Tag:         true,
+			PullRequest: obj.Spec.PR,
 		},
 	}
 
