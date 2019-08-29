@@ -1,27 +1,21 @@
 package hooks
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
-	"strconv"
-	"strings"
 
-	"github.com/drone/go-scm/scm"
 	"github.com/gorilla/mux"
-	webhookv1 "github.com/rancher/gitwatcher/pkg/apis/gitwatcher.cattle.io/v1"
 	webhookv1controller "github.com/rancher/gitwatcher/pkg/generated/controllers/gitwatcher.cattle.io/v1"
 	"github.com/rancher/gitwatcher/pkg/provider"
 	"github.com/rancher/gitwatcher/pkg/provider/github"
 	"github.com/rancher/gitwatcher/pkg/types"
 	"github.com/sirupsen/logrus"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/json"
 )
 
 type WebhookHandler struct {
 	gitWatcherCache webhookv1controller.GitWatcherCache
-	gitCommit       webhookv1controller.GitCommitClient
+	gitCommit       webhookv1controller.GitCommitController
 	providers       []provider.Provider
 }
 
@@ -31,7 +25,7 @@ func newHandler(rContext *types.Context) *WebhookHandler {
 		gitWatcherCache: rContext.Webhook.Gitwatcher().V1().GitWatcher().Cache(),
 		gitCommit:       rContext.Webhook.Gitwatcher().V1().GitCommit(),
 	}
-	wh.providers = append(wh.providers, github.NewGitHub(secretCache, rContext.Apply))
+	wh.providers = append(wh.providers, github.NewGitHub(rContext.Apply, wh.gitCommit, rContext.Webhook.Gitwatcher().V1().GitWatcher(), secretCache))
 	return wh
 }
 
@@ -58,86 +52,13 @@ func (h *WebhookHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 
 func (h *WebhookHandler) execute(req *http.Request) (int, error) {
 	for _, provider := range h.providers {
-		receiver, webhook, ok, code, err := provider.HandleHook(h.gitWatcherCache, req)
+		code, err := provider.HandleHook(req.Context(), req)
 		if err != nil {
 			return code, err
 		}
-
-		if ok {
-			return h.validateAndGenerateExecution(webhook, receiver)
-		}
+		return code, nil
 	}
 	return http.StatusNotFound, fmt.Errorf("unknown provider")
-}
-
-func (h *WebhookHandler) validateAndGenerateExecution(webhook scm.Webhook, receiver *webhookv1.GitWatcher) (int, error) {
-	execution := initExecution(receiver)
-	switch parsed := webhook.(type) {
-	case *scm.PushHook:
-		if !receiver.Spec.Push {
-			return http.StatusUnavailableForLegalReasons, errors.New("push event is deactivated")
-		}
-		if strings.HasPrefix(parsed.Ref, "refs/heads/") {
-			execution.Spec.Branch = strings.TrimPrefix(parsed.Ref, "refs/heads/")
-		}
-		execution.Spec.Author = parsed.Sender.Login
-		execution.Spec.AuthorEmail = parsed.Sender.Email
-		execution.Spec.AuthorAvatar = parsed.Sender.Avatar
-		execution.Spec.Message = parsed.Commit.Message
-		execution.Spec.Commit = parsed.Commit.Sha
-		execution.Spec.SourceLink = parsed.Commit.Link
-	case *scm.TagHook:
-		if !receiver.Spec.Tag {
-			return http.StatusUnavailableForLegalReasons, errors.New("tag event is deactivated")
-		}
-		if parsed.Action != scm.ActionCreate {
-			return http.StatusUnavailableForLegalReasons, errors.New("action ommitted")
-		}
-		execution.Spec.Author = parsed.Sender.Login
-		execution.Spec.AuthorEmail = parsed.Sender.Email
-		execution.Spec.AuthorAvatar = parsed.Sender.Avatar
-		execution.Spec.Tag = parsed.Ref.Name
-		execution.Spec.Message = fmt.Sprintf("tag %s is created", parsed.Ref.Name)
-		execution.Spec.SourceLink = parsed.Repo.Link
-	case *scm.PullRequestHook:
-		if !receiver.Spec.PR {
-			return http.StatusUnavailableForLegalReasons, errors.New("pull request event is deactivated")
-		}
-		if parsed.Action != scm.ActionOpen && parsed.Action != scm.ActionSync && parsed.Action != scm.ActionClose && parsed.Action != scm.ActionReopen {
-			return http.StatusUnavailableForLegalReasons, errors.New("action ommitted")
-		}
-		execution.Spec.Author = parsed.Sender.Login
-		execution.Spec.AuthorEmail = parsed.Sender.Email
-		execution.Spec.AuthorAvatar = parsed.Sender.Avatar
-		execution.Spec.PR = strconv.Itoa(parsed.PullRequest.Number)
-		execution.Spec.Title = parsed.PullRequest.Title
-		execution.Spec.Message = parsed.PullRequest.Body
-		execution.Spec.SourceLink = parsed.PullRequest.Link
-		execution.Spec.RepositoryURL = parsed.Repo.Clone
-		execution.Spec.Commit = parsed.PullRequest.Sha
-		execution.Spec.Merged = parsed.PullRequest.Merged
-	}
-	execution.OwnerReferences = append(execution.OwnerReferences, metav1.OwnerReference{
-		APIVersion: webhookv1.SchemeGroupVersion.String(),
-		Kind:       "GitWatcher",
-		Name:       receiver.Name,
-		UID:        receiver.UID,
-	})
-	_, err := h.gitCommit.Create(execution)
-	if err != nil {
-		return http.StatusInternalServerError, err
-	}
-	return http.StatusOK, nil
-}
-
-func initExecution(receiver *webhookv1.GitWatcher) *webhookv1.GitCommit {
-	execution := &webhookv1.GitCommit{}
-	execution.GenerateName = receiver.Name + "-"
-	execution.Namespace = receiver.Namespace
-	execution.Spec.GitWatcherName = receiver.Name
-	execution.Labels = receiver.Spec.ExecutionLabels
-	execution.Spec.RepositoryURL = receiver.Spec.RepositoryURL
-	return execution
 }
 
 func HandleHooks(ctx *types.Context) http.Handler {

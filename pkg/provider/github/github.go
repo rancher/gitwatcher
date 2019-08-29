@@ -4,50 +4,66 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 
-	errors2 "k8s.io/apimachinery/pkg/api/errors"
-
-	"github.com/drone/go-scm/scm"
-	"github.com/drone/go-scm/scm/driver/github"
+	"github.com/google/go-github/v28/github"
 	"github.com/google/uuid"
 	webhookv1 "github.com/rancher/gitwatcher/pkg/apis/gitwatcher.cattle.io/v1"
 	v1 "github.com/rancher/gitwatcher/pkg/generated/controllers/gitwatcher.cattle.io/v1"
 	"github.com/rancher/gitwatcher/pkg/provider/polling"
-	"github.com/rancher/gitwatcher/pkg/provider/scmprovider"
 	"github.com/rancher/gitwatcher/pkg/utils"
-	v12 "github.com/rancher/wrangler-api/pkg/generated/controllers/core/v1"
+	corev1controller "github.com/rancher/wrangler-api/pkg/generated/controllers/core/v1"
 	"github.com/rancher/wrangler/pkg/apply"
 	"github.com/rancher/wrangler/pkg/kv"
 	"golang.org/x/oauth2"
+	errors2 "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 const (
 	githubURL           = "https://api.github.com"
 	HooksEndpointPrefix = "hooks?gitwebhookId="
 	GitWebHookParam     = "gitwebhookId"
-	secretName          = "githubtoken"
+	defaultSecretName   = "githubtoken"
+)
+
+const (
+	statusOpened   = "opened"
+	statusReopened = "reopened"
+	statusClosed   = "closed"
+	statusMerged   = "merged"
+	statusSynced   = "synchronize"
 )
 
 type GitHub struct {
-	scmprovider.SCM
-	apply apply.Apply
+	gitWatchers v1.GitWatcherController
+	gitCommits  v1.GitCommitController
+	secretCache corev1controller.SecretCache
+	httpClient  *http.Client
+	apply       apply.Apply
 }
 
-func NewGitHub(secrets v12.SecretCache, apply apply.Apply) *GitHub {
+func NewGitHub(apply apply.Apply, gitCommits v1.GitCommitController, gitWatchers v1.GitWatcherController, secretCache corev1controller.SecretCache) *GitHub {
 	return &GitHub{
-		SCM: scmprovider.SCM{
-			SecretsCache: secrets,
-		},
-		apply: apply.WithStrictCaching(),
+		secretCache: secretCache,
+		gitCommits:  gitCommits,
+		gitWatchers: gitWatchers,
+		apply:       apply.WithStrictCaching(),
+		httpClient:  http.DefaultClient,
 	}
 }
 
 func (w *GitHub) Supports(obj *webhookv1.GitWatcher) bool {
-	_, err := w.GetSecret(secretName, obj)
+	secretName := defaultSecretName
+	if obj.Spec.GithubWebhookToken != "" {
+		secretName = obj.Spec.GithubWebhookToken
+	}
+	_, err := w.secretCache.Get(obj.Namespace, secretName)
 	if errors2.IsNotFound(err) {
 		return false
 	}
@@ -68,42 +84,54 @@ func (w *GitHub) Create(ctx context.Context, obj *webhookv1.GitWatcher) (*webhoo
 		return obj, nil
 	}
 
-	scmClient, err := w.getClient(obj)
-	if err != nil {
-		return obj, err
-	}
-	defer scmClient.Client.CloseIdleConnections()
-
-	obj, err = w.createHook(obj, scmClient)
+	githubClient, err := w.getClient(ctx, obj)
 	if err != nil {
 		return obj, err
 	}
 
-	return w.getFirstCommit(ctx, obj, scmClient)
+	obj, err = w.createHook(ctx, obj, githubClient)
+	if err != nil {
+		return obj, err
+	}
+
+	return w.getFirstCommit(ctx, obj, githubClient)
 }
 
-func (w *GitHub) getFirstCommit(ctx context.Context, obj *webhookv1.GitWatcher, scmClient *scm.Client) (*webhookv1.GitWatcher, error) {
+func (w *GitHub) getFirstCommit(ctx context.Context, obj *webhookv1.GitWatcher, client *github.Client) (*webhookv1.GitWatcher, error) {
 	if obj.Status.FirstCommit != "" || obj.Spec.Branch == "" {
 		return obj, nil
 	}
 
-	repoName, err := getRepoNameFromURL(obj.Spec.RepositoryURL)
+	owner, repo, err := getOwnerAndRepo(obj.Spec.RepositoryURL)
 	if err != nil {
 		return obj, err
 	}
 
-	ref, resp, err := scmClient.Git.FindBranch(ctx, repoName, obj.Spec.Branch)
-	if err != nil || resp.Status != http.StatusOK {
-		return obj, err
+	ref, resp, err := client.Git.GetRef(ctx, owner, repo, "refs/heads/"+obj.Spec.Branch)
+	if err != nil {
+		return obj, fmt.Errorf("failed to get ref for %s/%s, error: %v", owner, repo, err)
+	}
+	defer resp.Body.Close()
+
+	if resp != nil && resp.StatusCode != http.StatusOK {
+		msg, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			return obj, fmt.Errorf("failed to get ref, failed to read api response")
+		}
+		return obj, fmt.Errorf("failed to get ref for %s/%s, error: %v", owner, repo, msg)
 	}
 
-	err = polling.ApplyCommit(obj, ref.Sha, w.apply)
+	if ref.GetObject() == nil || ref.GetObject().SHA == nil {
+		return obj, nil
+	}
+
+	err = polling.ApplyCommit(obj, *ref.GetObject().SHA, w.apply)
 	obj = obj.DeepCopy()
-	obj.Status.FirstCommit = ref.Sha
+	obj.Status.FirstCommit = *ref.GetObject().SHA
 	return obj, err
 }
 
-func (w *GitHub) createHook(obj *webhookv1.GitWatcher, scmClient *scm.Client) (*webhookv1.GitWatcher, error) {
+func (w *GitHub) createHook(ctx context.Context, obj *webhookv1.GitWatcher, client *github.Client) (*webhookv1.GitWatcher, error) {
 	if obj.Status.HookID != "" {
 		return obj, nil
 	}
@@ -111,94 +139,303 @@ func (w *GitHub) createHook(obj *webhookv1.GitWatcher, scmClient *scm.Client) (*
 	obj = obj.DeepCopy()
 	obj.Status.Token = uuid.New().String()
 
-	repoName, err := getRepoNameFromURL(obj.Spec.RepositoryURL)
+	owner, repo, err := getOwnerAndRepo(obj.Spec.RepositoryURL)
 	if err != nil {
 		return obj, err
 	}
 
-	in := &scm.HookInput{
-		Name:   "rio-gitwatcher",
-		Target: getHookEndpoint(obj, obj.Spec.ReceiverURL),
-		Secret: obj.Status.Token,
-		Events: scm.HookEvents{
-			Push:        true,
-			Tag:         true,
-			PullRequest: obj.Spec.PR,
+	events := getEvents(obj)
+	hook, resp, err := client.Repositories.CreateHook(ctx, owner, repo, &github.Hook{
+		Events: events,
+		Config: map[string]interface{}{
+			"url":    getHookEndpoint(obj, obj.Spec.ReceiverURL),
+			"secret": obj.Status.Token,
 		},
-	}
-
-	hook, _, err := scmClient.Repositories.CreateHook(context.Background(), repoName, in)
+	})
 	if err != nil {
-		return obj, err
+		return obj, fmt.Errorf("failed to create hook for %s/%s, error: %v", owner, repo, err)
+	}
+	defer resp.Body.Close()
+
+	if resp != nil && resp.StatusCode != http.StatusCreated {
+		msg, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			return obj, fmt.Errorf("failed to create hook, failed to read api response")
+		}
+		return obj, fmt.Errorf("failed to create hook for %s/%s, error: %v", owner, repo, msg)
 	}
 
-	obj.Status.HookID = hook.ID
+	if hook != nil && hook.ID != nil {
+		obj.Status.HookID = strconv.Itoa(int(*hook.ID))
+	}
+
 	return obj, nil
 }
 
-func (w *GitHub) getClient(obj *webhookv1.GitWatcher) (*scm.Client, error) {
-	secret, err := w.GetSecret(secretName, obj)
+func getEvents(obj *webhookv1.GitWatcher) []string {
+	var events []string
+	if obj.Spec.Push {
+		events = append(events, "push")
+	}
+
+	if obj.Spec.PR {
+		events = append(events, "pull_request")
+	}
+
+	if obj.Spec.Tag {
+		events = append(events, "create")
+	}
+	return events
+}
+
+func (w *GitHub) getClient(ctx context.Context, obj *webhookv1.GitWatcher) (*github.Client, error) {
+	secretName := defaultSecretName
+	if obj.Spec.GithubWebhookToken != "" {
+		secretName = obj.Spec.GithubWebhookToken
+	}
+
+	secret, err := w.secretCache.Get(obj.Namespace, secretName)
 	if err != nil {
 		return nil, err
 	}
 
-	return newGithubClient(string(secret.Data["accessToken"]))
+	return newGithubClient(ctx, w.httpClient, string(secret.Data["accessToken"])), nil
 }
 
-func (w *GitHub) HandleHook(gitCommits v1.GitWatcherCache, req *http.Request) (*webhookv1.GitWatcher, scm.Webhook, bool, int, error) {
+func (w *GitHub) HandleHook(ctx context.Context, req *http.Request) (int, error) {
 	receiverID := req.URL.Query().Get(utils.GitWebHookParam)
 	if receiverID == "" {
-		return nil, nil, false, 0, nil
+		return 0, nil
 	}
 
 	ns, name := kv.Split(receiverID, ":")
-	receiver, err := gitCommits.Get(ns, name)
+	gitwatcher, err := w.gitWatchers.Get(ns, name, metav1.GetOptions{})
 	if err != nil {
-		return nil, nil, true, http.StatusInternalServerError, err
+		return http.StatusInternalServerError, err
 	}
 
-	if !receiver.Spec.Enabled {
-		return nil, nil, true, http.StatusUnavailableForLegalReasons, errors.New("webhook receiver is disabled")
+	if !gitwatcher.Spec.Enabled {
+		return http.StatusUnavailableForLegalReasons, errors.New("webhook receiver is disabled")
 	}
 
-	client, err := w.getClient(receiver)
+	payload, err := github.ValidatePayload(req, []byte(gitwatcher.Status.Token))
 	if err != nil {
-		return nil, nil, true, http.StatusInternalServerError, err
+		return http.StatusInternalServerError, err
 	}
-	defer client.Client.CloseIdleConnections()
-
-	f := func(webhook scm.Webhook) (string, error) {
-		return receiver.Status.Token, nil
-	}
-	webhook, err := client.Webhooks.Parse(req, f)
+	event, err := github.ParseWebHook(github.WebHookType(req), payload)
 	if err != nil {
-		return nil, nil, true, http.StatusBadRequest, err
+		return http.StatusInternalServerError, err
 	}
 
-	return receiver, webhook, true, 0, nil
+	client, err := w.getClient(ctx, gitwatcher)
+	if err != nil {
+		return http.StatusInternalServerError, err
+	}
+
+	return w.handleEvent(ctx, client, event, gitwatcher)
 }
 
-func newGithubClient(token string) (*scm.Client, error) {
-	c, err := github.New(githubURL)
-	if err != nil {
-		return nil, err
+func (w *GitHub) handleEvent(ctx context.Context, client *github.Client, event interface{}, receiver *webhookv1.GitWatcher) (int, error) {
+	execution := initExecution(receiver)
+	switch event.(type) {
+	case *github.PushEvent:
+		parsed := event.(*github.PushEvent)
+		if parsed.Ref != nil {
+			if strings.HasPrefix(*parsed.Ref, "refs/heads/") {
+				execution.Spec.Branch = strings.TrimPrefix(*parsed.Ref, "refs/heads/")
+			} else if strings.HasPrefix(*parsed.Ref, "refs/tags/") {
+				execution.Spec.Tag = strings.TrimPrefix(*parsed.Ref, "refs/tags/")
+			}
+		}
+		if parsed.Sender != nil {
+			execution.Spec.Author = safeString(parsed.Sender.Login)
+			execution.Spec.AuthorEmail = safeString(parsed.Sender.Email)
+			execution.Spec.AuthorAvatar = safeString(parsed.Sender.AvatarURL)
+		}
+
+		if parsed.GetHeadCommit() != nil {
+			execution.Spec.Message = safeString(parsed.GetHeadCommit().Message)
+			execution.Spec.Commit = safeString(parsed.GetHeadCommit().ID)
+			execution.Spec.SourceLink = safeString(parsed.GetHeadCommit().URL)
+			if execution.Spec.Branch == receiver.Spec.Branch {
+				if err := w.createDeploymentForProduction(ctx, client, receiver, safeString(parsed.GetHeadCommit().ID)); err != nil {
+					return http.StatusInternalServerError, err
+				}
+			}
+		}
+	case *github.PullRequestEvent:
+		if !receiver.Spec.PR {
+			return http.StatusUnavailableForLegalReasons, fmt.Errorf("pull request is not enabled")
+		}
+		parsed := event.(*github.PullRequestEvent)
+		if parsed.Action != nil && (*parsed.Action != statusOpened && *parsed.Action != statusReopened && *parsed.Action != statusClosed && *parsed.Action != statusMerged && *parsed.Action != statusSynced) {
+			return http.StatusUnavailableForLegalReasons, fmt.Errorf("action %s ommitted", *parsed.Action)
+		}
+		execution.Spec.Action = *parsed.Action
+		if parsed.Sender != nil {
+			execution.Spec.Author = safeString(parsed.Sender.Login)
+			execution.Spec.AuthorEmail = safeString(parsed.Sender.Email)
+			execution.Spec.AuthorAvatar = safeString(parsed.Sender.AvatarURL)
+		}
+		if parsed.Number != nil {
+			execution.Spec.PR = strconv.Itoa(*parsed.Number)
+		}
+
+		if parsed.PullRequest != nil {
+			execution.Spec.Title = safeString(parsed.PullRequest.Title)
+			execution.Spec.Message = safeString(parsed.PullRequest.Body)
+			execution.Spec.SourceLink = safeString(parsed.PullRequest.URL)
+			execution.Spec.Merged = safeBool(parsed.PullRequest.Merged)
+			if parsed.PullRequest.Head != nil {
+				execution.Spec.Commit = safeString(parsed.PullRequest.Head.SHA)
+			}
+		}
+
+		if *parsed.Action == statusClosed {
+			execution.Spec.Closed = true
+		}
+
+		if parsed.Repo != nil {
+			execution.Spec.RepositoryURL = safeString(parsed.Repo.HTMLURL)
+		}
+
+		if err := w.createDeploymentForPullRequest(ctx, client, receiver, parsed); err != nil {
+			return http.StatusInternalServerError, err
+		}
 	}
+	execution.OwnerReferences = append(execution.OwnerReferences, metav1.OwnerReference{
+		APIVersion: webhookv1.SchemeGroupVersion.String(),
+		Kind:       "GitWatcher",
+		Name:       receiver.Name,
+		UID:        receiver.UID,
+	})
+	_, err := w.gitCommits.Create(execution)
+	if err != nil {
+		return http.StatusInternalServerError, err
+	}
+	return http.StatusOK, nil
+}
+
+func (w *GitHub) createDeploymentForProduction(ctx context.Context, client *github.Client, gitWatcher *webhookv1.GitWatcher, commit string) error {
+	if !gitWatcher.Spec.GithubDeployment {
+		return nil
+	}
+
+	owner, repo, err := getOwnerAndRepo(gitWatcher.Spec.RepositoryURL)
+	if err != nil {
+		return err
+	}
+
+	ref := commit
+	environment := "production"
+	req := &github.DeploymentRequest{
+		Ref:         &ref,
+		Environment: &environment,
+	}
+
+	deploy, err := w.createDeployment(ctx, client, owner, repo, req)
+	if err != nil {
+		return err
+	}
+	if gitWatcher.Status.GithubStatus == nil {
+		gitWatcher.Status.GithubStatus = &webhookv1.GithubStatus{}
+	}
+	gitWatcher.Status.GithubStatus.ProductionDeployID = deploy.ID
+	_, err = w.gitWatchers.Update(gitWatcher)
+	return err
+}
+
+func (w *GitHub) createDeploymentForPullRequest(ctx context.Context, client *github.Client, gitWatcher *webhookv1.GitWatcher, event *github.PullRequestEvent) error {
+	if !gitWatcher.Spec.GithubDeployment {
+		return nil
+	}
+
+	if *event.Action != statusOpened && *event.Action != statusSynced {
+		return nil
+	}
+
+	owner, repo, err := getOwnerAndRepo(gitWatcher.Spec.RepositoryURL)
+	if err != nil {
+		return err
+	}
+
+	if event.PullRequest == nil || event.PullRequest.ID == nil {
+		return fmt.Errorf("failed to find pull request data")
+	}
+
+	if gitWatcher.Status.GithubStatus.PullRequestDeployID != nil {
+		if _, ok := gitWatcher.Status.GithubStatus.PullRequestDeployID[strconv.Itoa(*event.PullRequest.Number)]; ok && *event.Action != statusSynced {
+			return nil
+		}
+	}
+
+	ref := fmt.Sprintf("pull/%v/head", *event.PullRequest.Number)
+	req := &github.DeploymentRequest{
+		Ref:         &ref,
+		Environment: &[]string{"staging"}[0],
+	}
+	deploy, err := w.createDeployment(ctx, client, owner, repo, req)
+	if err != nil {
+		return err
+	}
+	if gitWatcher.Status.GithubStatus == nil {
+		gitWatcher.Status.GithubStatus = &webhookv1.GithubStatus{}
+	}
+	if gitWatcher.Status.GithubStatus.PullRequestDeployID == nil {
+		gitWatcher.Status.GithubStatus.PullRequestDeployID = map[string]*int64{}
+	}
+	gitWatcher.Status.GithubStatus.PullRequestDeployID[strconv.Itoa(*event.PullRequest.Number)] = deploy.ID
+	_, err = w.gitWatchers.Update(gitWatcher)
+	return err
+}
+
+func (w *GitHub) createDeployment(ctx context.Context, client *github.Client, owner, repo string, req *github.DeploymentRequest) (*github.Deployment, error) {
+	deploy, resp, err := client.Repositories.CreateDeployment(ctx, owner, repo, req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create deployment, err: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		msg, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			return nil, err
+		}
+		return nil, fmt.Errorf("failed to create deployment, code: %v, error: %v", resp.StatusCode, msg)
+	}
+	return deploy, nil
+}
+
+func initExecution(receiver *webhookv1.GitWatcher) *webhookv1.GitCommit {
+	execution := &webhookv1.GitCommit{}
+	execution.GenerateName = receiver.Name + "-"
+	execution.Namespace = receiver.Namespace
+	execution.Spec.GitWatcherName = receiver.Name
+	execution.Labels = receiver.Spec.ExecutionLabels
+	execution.Spec.RepositoryURL = receiver.Spec.RepositoryURL
+	return execution
+}
+
+func newGithubClient(ctx context.Context, httpClient *http.Client, token string) *github.Client {
 	ts := oauth2.StaticTokenSource(
 		&oauth2.Token{AccessToken: token},
 	)
-	tc := oauth2.NewClient(context.Background(), ts)
-	c.Client = tc
-	return c, nil
+	subCtx := context.WithValue(ctx, oauth2.HTTPClient, httpClient)
+
+	tc := oauth2.NewClient(subCtx, ts)
+
+	client := github.NewClient(tc)
+	return client
 }
 
-func getRepoNameFromURL(repoURL string) (string, error) {
+func getOwnerAndRepo(repoURL string) (string, string, error) {
 	u, err := url.Parse(repoURL)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	repo := strings.TrimPrefix(u.Path, "/")
 	repo = strings.TrimSuffix(repo, ".git")
-	return repo, nil
+	owner, repo := kv.Split(repo, "/")
+	return owner, repo, nil
 }
 
 func getHookEndpoint(receiver *webhookv1.GitWatcher, endpoint string) string {
@@ -210,4 +447,18 @@ func getHookEndpoint(receiver *webhookv1.GitWatcher, endpoint string) string {
 
 func hookURL(base string, receiver *webhookv1.GitWatcher) string {
 	return fmt.Sprintf("%s/%s%s:%s", base, HooksEndpointPrefix, receiver.Namespace, receiver.Name)
+}
+
+func safeString(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
+
+func safeBool(b *bool) bool {
+	if b == nil {
+		return false
+	}
+	return *b
 }

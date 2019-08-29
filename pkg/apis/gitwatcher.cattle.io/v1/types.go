@@ -27,6 +27,7 @@ type GitWatcherSpec struct {
 	ReceiverURL                    string            `json:"receiverURL,omitempty"`
 	RepositoryURL                  string            `json:"repositoryUrl,omitempty"`
 	RepositoryCredentialSecretName string            `json:"repositoryCredentialSecretName,omitempty"`
+	GithubWebhookToken             string            `json:"githubWebhookToken,omitempty"`
 	Provider                       string            `json:"provider,omitempty"`
 	Push                           bool              `json:"push,omitempty"`
 	PR                             bool              `json:"pr,omitempty"`
@@ -34,6 +35,7 @@ type GitWatcherSpec struct {
 	Branch                         string            `json:"branch,omitempty"`
 	ExecutionLabels                map[string]string `json:"executionLabels,omitempty"`
 	Enabled                        bool              `json:"enabled,omitempty"`
+	GithubDeployment               bool              `json:"githubDeployment,omitempty"`
 }
 
 // +genclient
@@ -48,6 +50,7 @@ type GitCommit struct {
 }
 
 type GitCommitSpec struct {
+	Action         string `json:"action,omitempty"`
 	Payload        string `json:"payload,omitempty"`
 	GitWatcherName string `json:"gitWatcherName,omitempty"`
 	Commit         string `json:"commit,omitempty"`
@@ -55,6 +58,7 @@ type GitCommitSpec struct {
 	Tag            string `json:"tag,omitempty"`
 	PR             string `json:"pr,omitempty"`
 	Merged         bool   `json:"merged,omitempty"`
+	Closed         bool   `json:"closed,omitempty"`
 	SourceLink     string `json:"sourceLink,omitempty"`
 	RepositoryURL  string `json:"repositoryUrl,omitempty"`
 	Title          string `json:"title,omitempty"`
@@ -65,10 +69,16 @@ type GitCommitSpec struct {
 }
 
 type GitWatcherStatus struct {
-	Conditions  []Condition `json:"conditions,omitempty"`
-	Token       string      `json:"token,omitempty"`
-	HookID      string      `json:"hookId,omitempty"`
-	FirstCommit string      `json:"firstCommit,omitempty"`
+	Conditions   []Condition   `json:"conditions,omitempty"`
+	Token        string        `json:"token,omitempty"`
+	HookID       string        `json:"hookId,omitempty"`
+	FirstCommit  string        `json:"firstCommit,omitempty"`
+	GithubStatus *GithubStatus `json:"githubStatus,omitempty"`
+}
+
+type GithubStatus struct {
+	ProductionDeployID  *int64            `json:"productionDeployId,omitempty"`
+	PullRequestDeployID map[string]*int64 `json:"pullRequestDeployId,omitempty"`
 }
 
 type GitCommitStatus struct {
