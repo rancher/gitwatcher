@@ -1,10 +1,5 @@
 # github.com/davecgh/go-spew v1.1.1
 github.com/davecgh/go-spew/spew
-# github.com/drone/go-scm v1.4.0
-github.com/drone/go-scm/scm
-github.com/drone/go-scm/scm/driver/github
-github.com/drone/go-scm/scm/driver/internal/hmac
-github.com/drone/go-scm/scm/driver/internal/null
 # github.com/evanphx/json-patch v4.2.0+incompatible
 github.com/evanphx/json-patch
 # github.com/gogo/protobuf v1.2.1
@@ -16,6 +11,10 @@ github.com/golang/protobuf/ptypes/any
 github.com/golang/protobuf/ptypes
 github.com/golang/protobuf/ptypes/duration
 github.com/golang/protobuf/ptypes/timestamp
+# github.com/google/go-github/v28 v28.0.0
+github.com/google/go-github/v28/github
+# github.com/google/go-querystring v1.0.0
+github.com/google/go-querystring/query
 # github.com/google/gofuzz v1.0.0
 github.com/google/gofuzz
 # github.com/google/uuid v1.1.1
@@ -43,7 +42,7 @@ github.com/modern-go/concurrent
 github.com/modern-go/reflect2
 # github.com/pkg/errors v0.8.1
 github.com/pkg/errors
-# github.com/rancher/wrangler v0.1.4
+# github.com/rancher/wrangler v0.1.7-0.20190824203417-e7b6ecb74e90
 github.com/rancher/wrangler/pkg/leader
 github.com/rancher/wrangler/pkg/signals
 github.com/rancher/wrangler/pkg/condition
@@ -73,6 +72,13 @@ github.com/spf13/pflag
 github.com/urfave/cli
 # golang.org/x/crypto v0.0.0-20190308221718-c2843e01d9a2
 golang.org/x/crypto/ssh/terminal
+golang.org/x/crypto/openpgp
+golang.org/x/crypto/openpgp/armor
+golang.org/x/crypto/openpgp/errors
+golang.org/x/crypto/openpgp/packet
+golang.org/x/crypto/openpgp/s2k
+golang.org/x/crypto/cast5
+golang.org/x/crypto/openpgp/elgamal
 # golang.org/x/net v0.0.0-20190311183353-d8887717615a
 golang.org/x/net/http2
 golang.org/x/net/http/httpguts
