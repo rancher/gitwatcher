@@ -4,11 +4,9 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/drone/go-scm/scm"
 	webhookv1 "github.com/rancher/gitwatcher/pkg/apis/gitwatcher.cattle.io/v1"
-	v1 "github.com/rancher/gitwatcher/pkg/generated/controllers/gitwatcher.cattle.io/v1"
 	"github.com/rancher/gitwatcher/pkg/git"
-	"github.com/rancher/gitwatcher/pkg/provider/scmprovider"
+	corev1controller "github.com/rancher/wrangler-api/pkg/generated/controllers/core/v1"
 	v12 "github.com/rancher/wrangler-api/pkg/generated/controllers/core/v1"
 	"github.com/rancher/wrangler/pkg/apply"
 	"github.com/rancher/wrangler/pkg/name"
@@ -22,20 +20,18 @@ var (
 )
 
 const (
-	secretName = "gitcredential"
+	defaultSecretName = "gitcredential"
 )
 
 type Polling struct {
-	scmprovider.SCM
-	apply apply.Apply
+	secretCache corev1controller.SecretCache
+	apply       apply.Apply
 }
 
 func NewPolling(secrets v12.SecretCache, apply apply.Apply) *Polling {
 	return &Polling{
-		SCM: scmprovider.SCM{
-			SecretsCache: secrets,
-		},
-		apply: apply.WithStrictCaching(),
+		secretCache: secrets,
+		apply:       apply.WithStrictCaching(),
 	}
 }
 
@@ -48,7 +44,11 @@ func (w *Polling) Create(ctx context.Context, obj *webhookv1.GitWatcher) (*webho
 		auth git.Auth
 	)
 
-	secret, err := w.GetSecret(secretName, obj)
+	secretName := defaultSecretName
+	if obj.Spec.RepositoryCredentialSecretName != "" {
+		secretName = obj.Spec.RepositoryCredentialSecretName
+	}
+	secret, err := w.secretCache.Get(obj.Namespace, secretName)
 	if errors.IsNotFound(err) {
 		secret = nil
 	} else if err != nil {
@@ -77,12 +77,12 @@ func (w *Polling) Create(ctx context.Context, obj *webhookv1.GitWatcher) (*webho
 	return obj, nil
 }
 
-func (w *Polling) HandleHook(gitWatchers v1.GitWatcherCache, req *http.Request) (*webhookv1.GitWatcher, scm.Webhook, bool, int, error) {
-	return nil, nil, false, 0, nil
+func (w *Polling) HandleHook(ctx context.Context, req *http.Request) (int, error) {
+	return 0, nil
 }
 
 func ApplyCommit(obj *webhookv1.GitWatcher, commit string, apply apply.Apply) error {
-	gitCommit := webhookv1.NewGitCommit(obj.Namespace, name.SafeConcatName(obj.Name, commit), webhookv1.GitCommit{
+	gitCommit := webhookv1.NewGitCommit(obj.Namespace, name.SafeConcatName(obj.Name, name.Hex(commit, 5)), webhookv1.GitCommit{
 		ObjectMeta: metav1.ObjectMeta{
 			Labels: obj.Spec.ExecutionLabels,
 			OwnerReferences: []metav1.OwnerReference{

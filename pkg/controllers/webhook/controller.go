@@ -4,13 +4,12 @@ import (
 	"context"
 	"time"
 
-	"github.com/rancher/gitwatcher/pkg/provider"
-	"github.com/rancher/gitwatcher/pkg/provider/github"
-	"github.com/rancher/gitwatcher/pkg/provider/polling"
-
 	webhookv1 "github.com/rancher/gitwatcher/pkg/apis/gitwatcher.cattle.io/v1"
 	webhookcontrollerv1 "github.com/rancher/gitwatcher/pkg/generated/controllers/gitwatcher.cattle.io/v1"
 	webhookv1controller "github.com/rancher/gitwatcher/pkg/generated/controllers/gitwatcher.cattle.io/v1"
+	"github.com/rancher/gitwatcher/pkg/provider"
+	"github.com/rancher/gitwatcher/pkg/provider/github"
+	"github.com/rancher/gitwatcher/pkg/provider/polling"
 	"github.com/rancher/gitwatcher/pkg/types"
 	"github.com/rancher/wrangler/pkg/ticker"
 	"k8s.io/apimachinery/pkg/labels"
@@ -32,7 +31,7 @@ func Register(ctx context.Context, rContext *types.Context) error {
 	apply := rContext.Apply.WithCacheTypes(
 		rContext.Webhook.Gitwatcher().V1().GitWatcher(),
 		rContext.Webhook.Gitwatcher().V1().GitCommit())
-	wh.providers = append(wh.providers, github.NewGitHub(secretsLister, apply))
+	wh.providers = append(wh.providers, github.NewGitHub(apply, rContext.Webhook.Gitwatcher().V1().GitCommit(), wh.gitWatcher, secretsLister))
 	wh.providers = append(wh.providers, polling.NewPolling(secretsLister, apply))
 
 	rContext.Webhook.Gitwatcher().V1().GitWatcher().OnChange(ctx, "webhook-receiver",

@@ -61,7 +61,7 @@ func run(c *cli.Context) error {
 	ctx, rioContext := types.BuildContext(ctx, namespace, restConfig)
 
 	go func() {
-		leader.RunOrDie(ctx, namespace, "rio", rioContext.K8s, func(ctx context.Context) {
+		leader.RunOrDie(ctx, namespace, "rio-gitwatcher", rioContext.K8s, func(ctx context.Context) {
 			if err := webhook.Register(ctx, rioContext); err != nil {
 				panic(err)
 			}
