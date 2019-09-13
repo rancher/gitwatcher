@@ -3,7 +3,6 @@ package webhook
 import (
 	"context"
 	"fmt"
-	"github.com/sirupsen/logrus"
 	"io/ioutil"
 	"net/http"
 	"time"
@@ -18,6 +17,7 @@ import (
 	"github.com/rancher/gitwatcher/pkg/types"
 	corev1controller "github.com/rancher/wrangler-api/pkg/generated/controllers/core/v1"
 	"github.com/rancher/wrangler/pkg/ticker"
+	"github.com/sirupsen/logrus"
 	"k8s.io/apimachinery/pkg/labels"
 )
 

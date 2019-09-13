@@ -64,7 +64,11 @@ func (h *WebhookHandler) execute(req *http.Request) (int, error) {
 func HandleHooks(ctx *types.Context) http.Handler {
 	root := mux.NewRouter()
 	hooksHandler := newHandler(ctx)
+	logsHander := logsHandler{
+		core: ctx.K8s.CoreV1(),
+	}
 	root.UseEncodedPath()
 	root.PathPrefix("/hooks").Handler(hooksHandler)
+	root.PathPrefix("/logs").Handler(logsHander)
 	return root
 }
