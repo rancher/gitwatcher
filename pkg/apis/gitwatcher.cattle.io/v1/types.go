@@ -69,22 +69,25 @@ type GitCommitSpec struct {
 }
 
 type GitWatcherStatus struct {
-	Conditions   []Condition   `json:"conditions,omitempty"`
-	Token        string        `json:"token,omitempty"`
-	HookID       string        `json:"hookId,omitempty"`
-	FirstCommit  string        `json:"firstCommit,omitempty"`
-	GithubStatus *GithubStatus `json:"githubStatus,omitempty"`
+	Conditions  []Condition `json:"conditions,omitempty"`
+	Token       string      `json:"token,omitempty"`
+	HookID      string      `json:"hookId,omitempty"`
+	FirstCommit string      `json:"firstCommit,omitempty"`
 }
 
 type GithubStatus struct {
-	ProductionDeployID  *int64            `json:"productionDeployId,omitempty"`
-	PullRequestDeployID map[string]*int64 `json:"pullRequestDeployId,omitempty"`
+	DeploymentID    int64  `json:"deploymentId,omitempty"`
+	DeploymentState string `json:"deploymentState,omitempty"`
+	EnvironmentURL  string `json:"environmentUrl,omitempty"`
+	LogURL          string `json:"logUrl,omitempty"`
 }
 
 type GitCommitStatus struct {
-	Conditions    []Condition `json:"conditions,omitempty"`
-	StatusURL     string      `json:"statusUrl,omitempty"`
-	AppliedStatus string      `json:"appliedStatus,omitempty"`
+	Conditions    []Condition   `json:"conditions,omitempty"`
+	StatusURL     string        `json:"statusUrl,omitempty"`
+	AppliedStatus string        `json:"appliedStatus,omitempty"`
+	BuildStatus   string        `json:"buildStatus,omitempty"`
+	GithubStatus  *GithubStatus `json:"githubStatus,omitempty"`
 }
 
 type Condition struct {

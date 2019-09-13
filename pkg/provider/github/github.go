@@ -29,7 +29,7 @@ const (
 	githubURL           = "https://api.github.com"
 	HooksEndpointPrefix = "hooks?gitwebhookId="
 	GitWebHookParam     = "gitwebhookId"
-	defaultSecretName   = "githubtoken"
+	DefaultSecretName   = "githubtoken"
 )
 
 const (
@@ -59,7 +59,7 @@ func NewGitHub(apply apply.Apply, gitCommits v1.GitCommitController, gitWatchers
 }
 
 func (w *GitHub) Supports(obj *webhookv1.GitWatcher) bool {
-	secretName := defaultSecretName
+	secretName := DefaultSecretName
 	if obj.Spec.GithubWebhookToken != "" {
 		secretName = obj.Spec.GithubWebhookToken
 	}
@@ -102,7 +102,7 @@ func (w *GitHub) getFirstCommit(ctx context.Context, obj *webhookv1.GitWatcher, 
 		return obj, nil
 	}
 
-	owner, repo, err := getOwnerAndRepo(obj.Spec.RepositoryURL)
+	owner, repo, err := GetOwnerAndRepo(obj.Spec.RepositoryURL)
 	if err != nil {
 		return obj, err
 	}
@@ -139,7 +139,7 @@ func (w *GitHub) createHook(ctx context.Context, obj *webhookv1.GitWatcher, clie
 	obj = obj.DeepCopy()
 	obj.Status.Token = uuid.New().String()
 
-	owner, repo, err := getOwnerAndRepo(obj.Spec.RepositoryURL)
+	owner, repo, err := GetOwnerAndRepo(obj.Spec.RepositoryURL)
 	if err != nil {
 		return obj, err
 	}
@@ -189,7 +189,7 @@ func getEvents(obj *webhookv1.GitWatcher) []string {
 }
 
 func (w *GitHub) getClient(ctx context.Context, obj *webhookv1.GitWatcher) (*github.Client, error) {
-	secretName := defaultSecretName
+	secretName := DefaultSecretName
 	if obj.Spec.GithubWebhookToken != "" {
 		secretName = obj.Spec.GithubWebhookToken
 	}
@@ -199,7 +199,7 @@ func (w *GitHub) getClient(ctx context.Context, obj *webhookv1.GitWatcher) (*git
 		return nil, err
 	}
 
-	return newGithubClient(ctx, w.httpClient, string(secret.Data["accessToken"])), nil
+	return NewGithubClient(ctx, w.httpClient, string(secret.Data["accessToken"])), nil
 }
 
 func (w *GitHub) HandleHook(ctx context.Context, req *http.Request) (int, error) {
@@ -258,7 +258,7 @@ func (w *GitHub) handleEvent(ctx context.Context, client *github.Client, event i
 			execution.Spec.Commit = safeString(parsed.GetHeadCommit().ID)
 			execution.Spec.SourceLink = safeString(parsed.GetHeadCommit().URL)
 			if execution.Spec.Branch == receiver.Spec.Branch {
-				if err := w.createDeploymentForProduction(ctx, client, receiver, safeString(parsed.GetHeadCommit().ID)); err != nil {
+				if err := w.createDeploymentForProduction(ctx, client, receiver, execution, safeString(parsed.GetHeadCommit().ID)); err != nil {
 					return http.StatusInternalServerError, err
 				}
 			}
@@ -299,7 +299,7 @@ func (w *GitHub) handleEvent(ctx context.Context, client *github.Client, event i
 			execution.Spec.RepositoryURL = safeString(parsed.Repo.HTMLURL)
 		}
 
-		if err := w.createDeploymentForPullRequest(ctx, client, receiver, parsed); err != nil {
+		if err := w.createDeploymentForPullRequest(ctx, client, receiver, execution, parsed); err != nil {
 			return http.StatusInternalServerError, err
 		}
 	}
@@ -316,12 +316,12 @@ func (w *GitHub) handleEvent(ctx context.Context, client *github.Client, event i
 	return http.StatusOK, nil
 }
 
-func (w *GitHub) createDeploymentForProduction(ctx context.Context, client *github.Client, gitWatcher *webhookv1.GitWatcher, commit string) error {
+func (w *GitHub) createDeploymentForProduction(ctx context.Context, client *github.Client, gitWatcher *webhookv1.GitWatcher, gitCommit *webhookv1.GitCommit, commit string) error {
 	if !gitWatcher.Spec.GithubDeployment {
 		return nil
 	}
 
-	owner, repo, err := getOwnerAndRepo(gitWatcher.Spec.RepositoryURL)
+	owner, repo, err := GetOwnerAndRepo(gitWatcher.Spec.RepositoryURL)
 	if err != nil {
 		return err
 	}
@@ -337,15 +337,14 @@ func (w *GitHub) createDeploymentForProduction(ctx context.Context, client *gith
 	if err != nil {
 		return err
 	}
-	if gitWatcher.Status.GithubStatus == nil {
-		gitWatcher.Status.GithubStatus = &webhookv1.GithubStatus{}
+	if gitCommit.Status.GithubStatus == nil {
+		gitCommit.Status.GithubStatus = &webhookv1.GithubStatus{}
 	}
-	gitWatcher.Status.GithubStatus.ProductionDeployID = deploy.ID
-	_, err = w.gitWatchers.Update(gitWatcher)
+	gitCommit.Status.GithubStatus.DeploymentID = *deploy.ID
 	return err
 }
 
-func (w *GitHub) createDeploymentForPullRequest(ctx context.Context, client *github.Client, gitWatcher *webhookv1.GitWatcher, event *github.PullRequestEvent) error {
+func (w *GitHub) createDeploymentForPullRequest(ctx context.Context, client *github.Client, gitWatcher *webhookv1.GitWatcher, gitCommit *webhookv1.GitCommit, event *github.PullRequestEvent) error {
 	if !gitWatcher.Spec.GithubDeployment {
 		return nil
 	}
@@ -354,19 +353,13 @@ func (w *GitHub) createDeploymentForPullRequest(ctx context.Context, client *git
 		return nil
 	}
 
-	owner, repo, err := getOwnerAndRepo(gitWatcher.Spec.RepositoryURL)
+	owner, repo, err := GetOwnerAndRepo(gitWatcher.Spec.RepositoryURL)
 	if err != nil {
 		return err
 	}
 
 	if event.PullRequest == nil || event.PullRequest.ID == nil {
 		return fmt.Errorf("failed to find pull request data")
-	}
-
-	if gitWatcher.Status.GithubStatus.PullRequestDeployID != nil {
-		if _, ok := gitWatcher.Status.GithubStatus.PullRequestDeployID[strconv.Itoa(*event.PullRequest.Number)]; ok && *event.Action != statusSynced {
-			return nil
-		}
 	}
 
 	ref := fmt.Sprintf("pull/%v/head", *event.PullRequest.Number)
@@ -378,14 +371,10 @@ func (w *GitHub) createDeploymentForPullRequest(ctx context.Context, client *git
 	if err != nil {
 		return err
 	}
-	if gitWatcher.Status.GithubStatus == nil {
-		gitWatcher.Status.GithubStatus = &webhookv1.GithubStatus{}
+	if gitCommit.Status.GithubStatus == nil {
+		gitCommit.Status.GithubStatus = &webhookv1.GithubStatus{}
 	}
-	if gitWatcher.Status.GithubStatus.PullRequestDeployID == nil {
-		gitWatcher.Status.GithubStatus.PullRequestDeployID = map[string]*int64{}
-	}
-	gitWatcher.Status.GithubStatus.PullRequestDeployID[strconv.Itoa(*event.PullRequest.Number)] = deploy.ID
-	_, err = w.gitWatchers.Update(gitWatcher)
+	gitCommit.Status.GithubStatus.DeploymentID = *deploy.ID
 	return err
 }
 
@@ -415,7 +404,7 @@ func initExecution(receiver *webhookv1.GitWatcher) *webhookv1.GitCommit {
 	return execution
 }
 
-func newGithubClient(ctx context.Context, httpClient *http.Client, token string) *github.Client {
+func NewGithubClient(ctx context.Context, httpClient *http.Client, token string) *github.Client {
 	ts := oauth2.StaticTokenSource(
 		&oauth2.Token{AccessToken: token},
 	)
@@ -427,7 +416,7 @@ func newGithubClient(ctx context.Context, httpClient *http.Client, token string)
 	return client
 }
 
-func getOwnerAndRepo(repoURL string) (string, string, error) {
+func GetOwnerAndRepo(repoURL string) (string, string, error) {
 	u, err := url.Parse(repoURL)
 	if err != nil {
 		return "", "", err
