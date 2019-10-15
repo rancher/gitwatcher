@@ -10,7 +10,6 @@ import (
 	github2 "github.com/google/go-github/v28/github"
 	webhookv1 "github.com/rancher/gitwatcher/pkg/apis/gitwatcher.cattle.io/v1"
 	webhookcontrollerv1 "github.com/rancher/gitwatcher/pkg/generated/controllers/gitwatcher.cattle.io/v1"
-	webhookv1controller "github.com/rancher/gitwatcher/pkg/generated/controllers/gitwatcher.cattle.io/v1"
 	"github.com/rancher/gitwatcher/pkg/provider"
 	"github.com/rancher/gitwatcher/pkg/provider/github"
 	"github.com/rancher/gitwatcher/pkg/provider/polling"
@@ -18,6 +17,7 @@ import (
 	corev1controller "github.com/rancher/wrangler-api/pkg/generated/controllers/core/v1"
 	"github.com/rancher/wrangler/pkg/ticker"
 	"github.com/sirupsen/logrus"
+	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/labels"
 )
 
@@ -42,9 +42,7 @@ func Register(ctx context.Context, rContext *types.Context) error {
 	wh.providers = append(wh.providers, github.NewGitHub(apply, rContext.Webhook.Gitwatcher().V1().GitCommit(), wh.gitWatcher, secretsLister))
 	wh.providers = append(wh.providers, polling.NewPolling(secretsLister, apply))
 
-	rContext.Webhook.Gitwatcher().V1().GitWatcher().OnChange(ctx, "webhook-receiver",
-		webhookv1controller.UpdateGitWatcherOnChange(rContext.Webhook.Gitwatcher().V1().GitWatcher().Updater(), wh.onChange))
-
+	rContext.Webhook.Gitwatcher().V1().GitWatcher().OnChange(ctx, "webhook-receiver", wh.onChange)
 	rContext.Webhook.Gitwatcher().V1().GitCommit().OnChange(ctx, "gitcommit-github-deployment-status", wh.updateGithubStatus)
 
 	wh.start()
@@ -67,7 +65,14 @@ func (w *webhookHandler) onChange(key string, obj *webhookv1.GitWatcher) (*webho
 
 	for _, provider := range w.providers {
 		if provider.Supports(obj) {
-			return provider.Create(w.ctx, obj)
+			newObj, err := provider.Create(w.ctx, obj.DeepCopy())
+			if err != nil {
+				return obj, err
+			}
+			if equality.Semantic.DeepEqual(obj.Status, newObj.Status) {
+				return newObj, nil
+			}
+			return w.gitWatcher.Update(newObj)
 		}
 	}
 
