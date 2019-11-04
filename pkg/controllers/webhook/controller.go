@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"reflect"
 	"time"
 
 	github2 "github.com/google/go-github/v28/github"
@@ -17,7 +18,6 @@ import (
 	corev1controller "github.com/rancher/wrangler-api/pkg/generated/controllers/core/v1"
 	"github.com/rancher/wrangler/pkg/ticker"
 	"github.com/sirupsen/logrus"
-	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/labels"
 )
 
@@ -67,12 +67,16 @@ func (w *webhookHandler) onChange(key string, obj *webhookv1.GitWatcher) (*webho
 		if provider.Supports(obj) {
 			newObj, err := provider.Create(w.ctx, obj.DeepCopy())
 			if err != nil {
+				webhookv1.GitWebHookReceiverConditionRegistered.SetError(newObj, "", err)
+			}
+			if reflect.DeepEqual(obj, newObj) {
 				return obj, err
 			}
-			if equality.Semantic.DeepEqual(obj.Status, newObj.Status) {
-				return newObj, nil
+			updated, updateErr := w.gitWatcher.Update(newObj)
+			if updateErr != nil {
+				return obj, updateErr
 			}
-			return w.gitWatcher.Update(newObj)
+			return updated, err
 		}
 	}
 
