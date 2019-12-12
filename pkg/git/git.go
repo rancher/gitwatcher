@@ -2,7 +2,9 @@ package git
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"regexp"
 
 	"github.com/sirupsen/logrus"
 )
@@ -37,5 +39,28 @@ func CloneRepo(ctx context.Context, url string, commit string, auth *Auth) error
 
 	logrus.Infof("Output from git checkout %v", lines)
 
+	return nil
+}
+
+// returns nil if tag qualifies, otherwise returns specific error
+func TagMatch(query, exclude, tagRef string) error {
+	if query != "" {
+		match, err := regexp.MatchString(query, tagRef)
+		if err != nil {
+			return err
+		}
+		if match == false {
+			return errors.New("tag ref did not match tag query")
+		}
+	}
+	if exclude != "" {
+		excludeMatch, err := regexp.MatchString(exclude, tagRef)
+		if err != nil {
+			return err
+		}
+		if excludeMatch == true {
+			return errors.New("tag ref matched exclude query")
+		}
+	}
 	return nil
 }
