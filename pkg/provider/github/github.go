@@ -241,17 +241,17 @@ func (w *GitHub) handleEvent(ctx context.Context, client *github.Client, event i
 	switch event.(type) {
 	case *github.CreateEvent:
 		if receiver.Spec.Tag == false {
-			return http.StatusUnprocessableEntity, fmt.Errorf("create events only support tag")
+			return http.StatusUnprocessableEntity, fmt.Errorf("tag watching is not currently turned on")
 		}
 		parsed := event.(*github.CreateEvent)
 		if parsed.Ref == nil {
-			return http.StatusUnprocessableEntity, errors.New("create event has invalid tag ref")
+			return http.StatusUnprocessableEntity, errors.New("create event has empty tag ref")
 		}
 		if parsed.GetRefType() != "tag" {
-			return http.StatusUnprocessableEntity, errors.New("create event has non-tag type")
+			return http.StatusUnprocessableEntity, errors.New("create event only supports tag type")
 		}
 		execution.Spec.Tag = *parsed.Ref
-		err := git.TagMatch(receiver.Spec.TagQuery, receiver.Spec.TagExclude, execution.Spec.Tag)
+		err := git.TagMatch(receiver.Spec.TagIncludeRegexp, receiver.Spec.TagExcludeRegexp, execution.Spec.Tag)
 		if err != nil {
 			return http.StatusUnprocessableEntity, err
 		}
@@ -266,11 +266,8 @@ func (w *GitHub) handleEvent(ctx context.Context, client *github.Client, event i
 		if parsed.Ref != nil {
 			if strings.HasPrefix(*parsed.Ref, "refs/heads/") {
 				execution.Spec.Branch = strings.TrimPrefix(*parsed.Ref, "refs/heads/")
-			} else if strings.HasPrefix(*parsed.Ref, "refs/tags/") {
-				if receiver.Spec.Tag == false {
-					return http.StatusUnprocessableEntity, fmt.Errorf("only watches on commit")
-				}
-				execution.Spec.Tag = strings.TrimPrefix(*parsed.Ref, "refs/tags/")
+			} else {
+				return http.StatusUnprocessableEntity, fmt.Errorf("push event only handles commits") // tag should be handled via create event
 			}
 		}
 		if parsed.Sender != nil {

@@ -33,8 +33,8 @@ type GitWatcherSpec struct {
 	PR                             bool              `json:"pr,omitempty"`
 	Branch                         string            `json:"branch,omitempty"`
 	Tag                            bool              `json:"tag,omitempty"`
-	TagQuery                       string            `json:"tagQuery,omitempty"`
-	TagExclude                     string            `json:"tagExclude,omitempty"`
+	TagIncludeRegexp               string            `json:"tagInclude,omitempty"`
+	TagExcludeRegexp               string            `json:"tagExclude,omitempty"`
 	ExecutionLabels                map[string]string `json:"executionLabels,omitempty"`
 	Enabled                        bool              `json:"enabled,omitempty"`
 	GithubDeployment               bool              `json:"githubDeployment,omitempty"`
