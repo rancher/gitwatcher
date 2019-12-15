@@ -15,6 +15,7 @@ import (
 	"github.com/google/uuid"
 	webhookv1 "github.com/rancher/gitwatcher/pkg/apis/gitwatcher.cattle.io/v1"
 	v1 "github.com/rancher/gitwatcher/pkg/generated/controllers/gitwatcher.cattle.io/v1"
+	"github.com/rancher/gitwatcher/pkg/git"
 	"github.com/rancher/gitwatcher/pkg/provider/polling"
 	"github.com/rancher/gitwatcher/pkg/utils"
 	corev1controller "github.com/rancher/wrangler-api/pkg/generated/controllers/core/v1"
@@ -215,7 +216,7 @@ func (w *GitHub) HandleHook(ctx context.Context, req *http.Request) (int, error)
 	}
 
 	if !gitwatcher.Spec.Enabled {
-		return http.StatusUnavailableForLegalReasons, errors.New("webhook receiver is disabled")
+		return http.StatusUnprocessableEntity, errors.New("webhook receiver is disabled")
 	}
 
 	payload, err := github.ValidatePayload(req, []byte(gitwatcher.Status.Token))
@@ -238,13 +239,35 @@ func (w *GitHub) HandleHook(ctx context.Context, req *http.Request) (int, error)
 func (w *GitHub) handleEvent(ctx context.Context, client *github.Client, event interface{}, receiver *webhookv1.GitWatcher) (int, error) {
 	execution := initExecution(receiver)
 	switch event.(type) {
+	case *github.CreateEvent:
+		if receiver.Spec.Tag == false {
+			return http.StatusUnprocessableEntity, fmt.Errorf("tag watching is not currently turned on")
+		}
+		parsed := event.(*github.CreateEvent)
+		if parsed.Ref == nil {
+			return http.StatusUnprocessableEntity, errors.New("create event has empty tag ref")
+		}
+		if parsed.GetRefType() != "tag" {
+			return http.StatusUnprocessableEntity, errors.New("create event only supports tag type")
+		}
+		execution.Spec.Tag = *parsed.Ref
+		err := git.TagMatch(receiver.Spec.TagIncludeRegexp, receiver.Spec.TagExcludeRegexp, execution.Spec.Tag)
+		if err != nil {
+			return http.StatusUnprocessableEntity, err
+		}
+		if parsed.Sender != nil {
+			execution.Spec.Author = safeString(parsed.Sender.Login)
+			execution.Spec.AuthorEmail = safeString(parsed.Sender.Email)
+			execution.Spec.AuthorAvatar = safeString(parsed.Sender.AvatarURL)
+		}
+
 	case *github.PushEvent:
 		parsed := event.(*github.PushEvent)
 		if parsed.Ref != nil {
 			if strings.HasPrefix(*parsed.Ref, "refs/heads/") {
 				execution.Spec.Branch = strings.TrimPrefix(*parsed.Ref, "refs/heads/")
-			} else if strings.HasPrefix(*parsed.Ref, "refs/tags/") {
-				execution.Spec.Tag = strings.TrimPrefix(*parsed.Ref, "refs/tags/")
+			} else {
+				return http.StatusUnprocessableEntity, fmt.Errorf("push event only handles commits") // tag should be handled via create event
 			}
 		}
 		if parsed.Sender != nil {
@@ -265,11 +288,11 @@ func (w *GitHub) handleEvent(ctx context.Context, client *github.Client, event i
 		}
 	case *github.PullRequestEvent:
 		if !receiver.Spec.PR {
-			return http.StatusUnavailableForLegalReasons, fmt.Errorf("pull request is not enabled")
+			return http.StatusUnprocessableEntity, fmt.Errorf("pull request is not enabled")
 		}
 		parsed := event.(*github.PullRequestEvent)
 		if parsed.Action != nil && (*parsed.Action != statusOpened && *parsed.Action != statusReopened && *parsed.Action != statusClosed && *parsed.Action != statusMerged && *parsed.Action != statusSynced) {
-			return http.StatusUnavailableForLegalReasons, fmt.Errorf("action %s ommitted", *parsed.Action)
+			return http.StatusUnprocessableEntity, fmt.Errorf("action %s ommitted", *parsed.Action)
 		}
 		execution.Spec.Action = *parsed.Action
 		if parsed.Sender != nil {
