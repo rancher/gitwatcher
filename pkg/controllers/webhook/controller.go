@@ -97,9 +97,9 @@ func (w *webhookHandler) updateGithubStatus(key string, obj *webhookv1.GitCommit
 		return obj, err
 	}
 
-	secretName := github.DefaultSecretName
-	if gitwatcher.Spec.GithubWebhookToken != "" {
-		secretName = gitwatcher.Spec.GithubWebhookToken
+	secretName, err := github.GetWebhookSecretName(gitwatcher)
+	if err != nil {
+		return obj, err
 	}
 
 	secret, err := w.secretCache.Get(obj.Namespace, secretName)

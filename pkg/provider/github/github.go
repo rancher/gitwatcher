@@ -27,10 +27,10 @@ import (
 )
 
 const (
-	githubURL           = "https://api.github.com"
-	HooksEndpointPrefix = "hooks?gitwebhookId="
-	GitWebHookParam     = "gitwebhookId"
-	DefaultSecretName   = "githubtoken"
+	githubURL                   = "https://api.github.com"
+	HooksEndpointPrefix         = "hooks?gitwebhookId="
+	GitWebHookParam             = "gitwebhookId"
+	DeprecatedDefaultSecretName = "githubtoken"
 )
 
 const (
@@ -60,11 +60,11 @@ func NewGitHub(apply apply.Apply, gitCommits v1.GitCommitController, gitWatchers
 }
 
 func (w *GitHub) Supports(obj *webhookv1.GitWatcher) bool {
-	secretName := DefaultSecretName
-	if obj.Spec.GithubWebhookToken != "" {
-		secretName = obj.Spec.GithubWebhookToken
+	secretName, err := GetWebhookSecretName(obj)
+	if err != nil {
+		return false
 	}
-	_, err := w.secretCache.Get(obj.Namespace, secretName)
+	_, err = w.secretCache.Get(obj.Namespace, secretName)
 	if errors2.IsNotFound(err) {
 		return false
 	}
@@ -190,11 +190,10 @@ func getEvents(obj *webhookv1.GitWatcher) []string {
 }
 
 func (w *GitHub) getClient(ctx context.Context, obj *webhookv1.GitWatcher) (*github.Client, error) {
-	secretName := DefaultSecretName
-	if obj.Spec.GithubWebhookToken != "" {
-		secretName = obj.Spec.GithubWebhookToken
+	secretName, err := GetWebhookSecretName(obj)
+	if err != nil {
+		return nil, err
 	}
-
 	secret, err := w.secretCache.Get(obj.Namespace, secretName)
 	if err != nil {
 		return nil, err
@@ -437,6 +436,17 @@ func NewGithubClient(ctx context.Context, httpClient *http.Client, token string)
 
 	client := github.NewClient(tc)
 	return client
+}
+
+func GetWebhookSecretName(receiver *webhookv1.GitWatcher) (string, error) {
+	secretName := receiver.Spec.GithubWebhookToken
+	if secretName == "" && receiver.Status.HookID != "" {
+		secretName = DeprecatedDefaultSecretName // allow existing setups (with hook but without token name) to keep working
+	}
+	if secretName == "" {
+		return secretName, errors.New("github webhook token not found")
+	}
+	return secretName, nil
 }
 
 func GetOwnerAndRepo(repoURL string) (string, string, error) {
